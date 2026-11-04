@@ -14,7 +14,6 @@
 <svelte:head>
 	<meta name="theme-color" content="#091014" />
 	<meta property="og:site_name" content="TuxGG" />
-	<meta name="twitter:card" content="summary" />
 </svelte:head>
 
 <div class="flex min-h-screen flex-col">

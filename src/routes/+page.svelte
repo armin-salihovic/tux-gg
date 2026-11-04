@@ -22,17 +22,21 @@
 		content="Find Linux and Steam Deck game compatibility, compare Proton versions, and read real community reports on TuxGG."
 	/>
 	<link rel="canonical" href={data.canonical} />
+	<meta property="og:type" content="website" />
 	<meta property="og:title" content="Linux Game Compatibility & Reports | TuxGG" />
 	<meta
 		property="og:description"
 		content="Search Linux and Steam Deck compatibility reports, Proton versions, hardware, and workarounds."
 	/>
 	<meta property="og:url" content={data.canonical} />
+	<meta property="og:image" content={data.ogImage} />
 	<meta name="twitter:title" content="Linux Game Compatibility & Reports | TuxGG" />
 	<meta
 		name="twitter:description"
 		content="Search Linux and Steam Deck compatibility reports, Proton versions, hardware, and workarounds."
 	/>
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:image" content={data.ogImage} />
 </svelte:head>
 
 <section class="container-shell pt-12 sm:pt-20">
