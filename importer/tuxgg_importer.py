@@ -512,9 +512,9 @@ def validate_dataset(data_dir: Path, limit_per_archive: int | None = None) -> di
 
 
 def _connect(database_url: str | None = None):
-    url = database_url or os.environ.get("DATABASE_URL")
+    url = database_url or os.environ.get("IMPORTER_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not url:
-        raise RuntimeError("Set DATABASE_URL in the project .env or process environment before importing")
+        raise RuntimeError("Set IMPORTER_DATABASE_URL in .env or the process environment before importing")
     try:
         import psycopg
     except ImportError as exc:

@@ -13,6 +13,28 @@ from importer import tuxgg_importer
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not configured")
+TEST_DATABASE_NAME = "tuxgg_test"
+TEST_DATABASE_MARKER = "tuxgg_disposable_test_database_v1"
+
+
+def _connect_verified_test_database():
+    """Fail closed unless both database identity and the disposable marker match."""
+    import psycopg
+
+    conn = psycopg.connect(DATABASE_URL)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT current_database()")
+            if cur.fetchone()[0] != TEST_DATABASE_NAME:
+                raise RuntimeError("Refusing importer tests outside the dedicated tuxgg_test database.")
+            cur.execute("SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1")
+            row = cur.fetchone()
+            if row is None or row[0] != TEST_DATABASE_MARKER:
+                raise RuntimeError("Refusing importer tests without the disposable database safety marker.")
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def _record(
@@ -49,9 +71,7 @@ def clean_test_database():
     if not DATABASE_URL:
         yield
         return
-    import psycopg
-
-    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+    with _connect_verified_test_database() as conn, conn.cursor() as cur:
         cur.execute(
             'TRUNCATE TABLE reports, compatibility_summaries, import_batches, games RESTART IDENTITY CASCADE'
         )
@@ -59,9 +79,7 @@ def clean_test_database():
 
 
 def _counts():
-    import psycopg
-
-    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+    with _connect_verified_test_database() as conn, conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM reports")
         reports = cur.fetchone()[0]
         cur.execute("SELECT status, import_mode FROM import_batches ORDER BY id DESC LIMIT 1")
@@ -150,9 +168,7 @@ def test_summary_scoring_covers_positive_negative_sparse_and_recency_cases(tmp_p
     tuxgg_importer.import_archive(archive, DATABASE_URL, batch_size=100)
     tuxgg_importer.rebuild_summaries(DATABASE_URL)
 
-    import psycopg
-
-    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+    with _connect_verified_test_database() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT app_id, tier, report_count FROM compatibility_summaries WHERE app_id = ANY(%s)",
             (["440", "570", "730", "9000"],),

@@ -4,7 +4,6 @@
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ReportCard from '#lib/components/ReportCard.svelte';
-	import { getTrustedSteamArtworkUrl } from '#lib/steam-assets.js';
 	import { isIndexableGame } from '#lib/seo-constants.js';
 	let { data }: { data: PageData } = $props();
 	const gamePath = $derived(
@@ -36,9 +35,6 @@
 			: ''
 	);
 	const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
-	const knownHeaderImageUrl = $derived(
-		data.game ? getTrustedSteamArtworkUrl(data.game.headerImageUrl, data.game.appId) : null
-	);
 </script>
 
 <svelte:head>
@@ -63,15 +59,12 @@
 		<meta property="og:title" content={`${data.game.title} Linux Compatibility | TuxGG`} />
 		<meta property="og:description" content={data.description} />
 		<meta property="og:url" content={data.canonical} />
+		<meta property="og:image" content={data.ogImage} />
+		<meta property="og:image:alt" content="TuxGG Linux and Steam Deck game compatibility" />
 		<meta name="twitter:title" content={`${data.game.title} Linux Compatibility | TuxGG`} />
 		<meta name="twitter:description" content={data.description} />
-		{#if knownHeaderImageUrl}<meta property="og:image" content={knownHeaderImageUrl} /><meta
-				name="twitter:card"
-				content="summary_large_image"
-			/><meta name="twitter:image" content={knownHeaderImageUrl} />{:else}<meta
-				name="twitter:card"
-				content="summary"
-			/>{/if}
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:image" content={data.ogImage} />
 		<!-- prettier-ignore -->
 		<script type="application/ld+json">
 {@html jsonLd}
