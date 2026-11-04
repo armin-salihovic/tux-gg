@@ -1,0 +1,14 @@
+node_modules
+.svelte-kit
+build
+dist
+.git
+.env
+.env.*
+!.env.example
+!.env.production.example
+protondb-data/
+.pytest_cache/
+__pycache__/
+playwright-report/
+test-results/

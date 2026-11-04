@@ -1,0 +1,74 @@
+<script lang="ts">
+	import type { ActionData, PageData } from './$types';
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+</script>
+
+<svelte:head
+	><title>Account settings | TuxGG</title><meta
+		name="robots"
+		content="noindex,follow"
+	/></svelte:head
+>
+
+<section class="container-shell max-w-3xl py-12 sm:py-16">
+	<p class="eyebrow">Account</p>
+	<h1 class="mt-2 text-3xl font-black tracking-tight text-white">Profile settings</h1>
+	<p class="mt-2 text-sm text-muted">
+		Your username and display name appear on your public profile.
+	</p>
+	{#if data.saved}<div
+			role="status"
+			class="mt-6 rounded-xl border border-mint/20 bg-mint/[0.06] p-4 text-sm text-mint"
+		>
+			Profile saved.
+		</div>{/if}
+	{#if form?.error}<div
+			role="alert"
+			class="mt-6 rounded-xl border border-rose-300/20 bg-rose-300/[0.06] p-4 text-sm text-rose-100"
+		>
+			{form.error}
+		</div>{/if}
+	<form method="POST" action="?/profile" class="surface mt-6 space-y-5 rounded-2xl p-6">
+		<label class="block text-sm font-semibold text-slate-200" for="name"
+			>Display name<input
+				id="name"
+				name="name"
+				required
+				maxlength="60"
+				value={data.profile.name}
+				class="mt-2 block w-full rounded-xl border border-line bg-black/20 px-4 py-3 text-sm text-white"
+			/></label
+		>
+		<label class="block text-sm font-semibold text-slate-200" for="username"
+			>Username<input
+				id="username"
+				name="username"
+				required
+				minlength="3"
+				maxlength="24"
+				pattern="[a-zA-Z0-9][a-zA-Z0-9_-]*"
+				value={data.profile.username}
+				class="mt-2 block w-full rounded-xl border border-line bg-black/20 px-4 py-3 text-sm text-white"
+			/><span class="mt-2 block text-xs font-normal text-muted"
+				>Public profile: /users/{data.profile.username}</span
+			></label
+		>
+		<button class="rounded-xl bg-mint px-5 py-3 text-sm font-extrabold text-ink hover:bg-lime"
+			>Save profile</button
+		>
+	</form>
+	<div class="surface mt-5 rounded-2xl p-6">
+		<h2 class="font-bold text-white">Connected accounts</h2>
+		<p class="mt-2 text-sm text-muted">
+			Discord: {data.profile.discordConnected ? 'connected' : 'not connected'}
+		</p>
+		<p class="mt-2 text-xs leading-5 text-slate-500">
+			Steam account linking is not yet implemented. Publishing compatibility reports stays disabled
+			until Steam ownership can be verified.
+		</p>
+	</div>
+	<a
+		class="mt-6 inline-flex text-sm font-semibold text-mint hover:text-lime"
+		href={`/users/${data.profile.username}`}>View your public profile →</a
+	>
+</section>

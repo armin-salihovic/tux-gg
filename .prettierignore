@@ -1,0 +1,9 @@
+node_modules/
+.svelte-kit/
+build/
+dist/
+coverage/
+playwright-report/
+test-results/
+protondb-data/
+pnpm-lock.yaml

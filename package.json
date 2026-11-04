@@ -1,0 +1,57 @@
+{
+	"name": "tuxgg",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@11.25.0",
+	"imports": {
+		"#lib/*": "./src/lib/*"
+	},
+	"scripts": {
+		"dev": "vite dev --host 127.0.0.1",
+		"build": "vite build",
+		"preview": "vite preview --host 127.0.0.1",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
+		"lint": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"test:unit": "vitest run",
+		"test:e2e": "playwright test",
+		"test": "pnpm test:unit && pnpm test:e2e",
+		"db:generate": "drizzle-kit generate",
+		"db:migrate": "drizzle-kit migrate",
+		"db:setup": "python scripts/setup_database.py",
+		"db:grant": "python scripts/setup_database.py --grant-only",
+		"import:inspect": "python importer/tuxgg_importer.py inspect",
+		"import:validate": "python importer/tuxgg_importer.py validate",
+		"import:sample": "python importer/tuxgg_importer.py sample-import",
+		"import:all": "python importer/tuxgg_importer.py import",
+		"import:stats": "python importer/tuxgg_importer.py stats"
+	},
+	"dependencies": {
+		"@sveltejs/adapter-node": "^6.0.1",
+		"@sveltejs/kit": "^3.1.1",
+		"@tailwindcss/vite": "^4.1.0",
+		"better-auth": "^1.6.34",
+		"drizzle-orm": "^0.44.7",
+		"pg": "^8.16.3",
+		"svelte": "^5.57.1",
+		"tailwindcss": "^4.1.0",
+		"zod": "^4.1.12"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.57.0",
+		"@sveltejs/vite-plugin-svelte": "^7.0.0",
+		"@types/node": "^26.0.0",
+		"@types/pg": "^8.15.5",
+		"drizzle-kit": "^0.31.5",
+		"dotenv": "^17.2.3",
+		"prettier": "^3.6.2",
+		"prettier-plugin-svelte": "^4.1.1",
+		"prettier-plugin-tailwindcss": "^0.8.1",
+		"svelte-check": "^4.3.3",
+		"typescript": "^6.0.0",
+		"vite": "^8.0.12",
+		"vitest": "^4.0.17"
+	}
+}
