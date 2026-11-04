@@ -32,7 +32,6 @@ jobs:
       DISCORD_CLIENT_ID: ci-only-client-id
       DISCORD_CLIENT_SECRET: ci-only-client-secret
       VERIFY_DATABASE_SETUP_SAFETY: '1'
-      DATABASE_SETUP_SNAPSHOT: ${{ runner.temp }}/tuxgg-database-permissions.json
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -47,10 +46,14 @@ jobs:
       - run: python -m pip install -r importer/requirements.txt
       - run: pnpm db:test:prepare
       - run: python scripts/snapshot_database_setup_baseline.py
+        env:
+          DATABASE_SETUP_SNAPSHOT: ${{ runner.temp }}/tuxgg-database-permissions.json
       - run: pnpm db:setup
       - run: pnpm db:migrate
       - run: pnpm db:grant
       - run: python scripts/verify_database_setup.py
+        env:
+          DATABASE_SETUP_SNAPSHOT: ${{ runner.temp }}/tuxgg-database-permissions.json
       - run: pnpm db:migrate
         env:
           MIGRATION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tuxgg_test
