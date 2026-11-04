@@ -3,15 +3,19 @@ services:
     build: .
     image: tuxgg:local
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL_DOCKER:-${DATABASE_URL}}
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-${DATABASE_URL:?Set DATABASE_URL or DATABASE_URL_DOCKER}}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-}
+      PUBLIC_CONTACT_EMAIL: ${PUBLIC_CONTACT_EMAIL:-}
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     healthcheck:

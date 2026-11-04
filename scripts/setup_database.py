@@ -80,12 +80,55 @@ def grant_runtime_access(admin_url: str) -> None:
 
 	with connect_admin(admin_url) as conn:
 		with conn.cursor() as cur:
+			cur.execute(
+				"SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
+				"FROM pg_roles WHERE rolname = %s",
+				(ROLE,),
+			)
+			attributes = cur.fetchone()
+			if attributes is None:
+				raise RuntimeError("The tuxgg_app runtime role does not exist.")
+			if any(attributes):
+				raise RuntimeError("The tuxgg_app role has PostgreSQL administrator attributes; remove them before granting runtime access.")
+			cur.execute(
+				"SELECT EXISTS (SELECT 1 FROM pg_auth_members "
+				"WHERE member = (SELECT oid FROM pg_roles WHERE rolname = %s))",
+				(ROLE,),
+			)
+			if cur.fetchone()[0]:
+				raise RuntimeError("The tuxgg_app role has role memberships; remove them before granting runtime access.")
+			cur.execute(
+				"SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s "
+				"AND datdba = (SELECT oid FROM pg_roles WHERE rolname = %s)) "
+				"OR EXISTS (SELECT 1 FROM pg_namespace WHERE nspname NOT LIKE 'pg_%%' "
+				"AND nspname <> 'information_schema' "
+				"AND nspowner = (SELECT oid FROM pg_roles WHERE rolname = %s)) "
+				"OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+				"WHERE n.nspname NOT LIKE 'pg_%%' AND n.nspname <> 'information_schema' "
+				"AND c.relkind IN ('r', 'p', 'v', 'm', 'S') "
+				"AND c.relowner = (SELECT oid FROM pg_roles WHERE rolname = %s))",
+				(DATABASE, ROLE, ROLE, ROLE),
+			)
+			if cur.fetchone()[0]:
+				raise RuntimeError("The tuxgg_app role owns database objects; transfer ownership to the migration role before granting runtime access.")
+
+	with connect_admin(admin_url) as conn:
+		with conn.cursor() as cur:
 			cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DATABASE,))
 			if cur.fetchone() is None:
 				raise RuntimeError("The tuxgg database does not exist; run setup without --grant-only first.")
 	with connect_admin(url_for_database(admin_url, DATABASE)) as conn:
 		with conn.cursor() as cur:
 			cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {};").format(sql.Identifier(DATABASE), sql.Identifier(ROLE)))
+			cur.execute(sql.SQL("REVOKE CREATE ON DATABASE {} FROM PUBLIC;").format(sql.Identifier(DATABASE)))
+			cur.execute(sql.SQL("REVOKE CREATE ON DATABASE {} FROM {};").format(sql.Identifier(DATABASE), sql.Identifier(ROLE)))
+			cur.execute(
+				"SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%%' "
+				"AND nspname <> 'information_schema'"
+			)
+			for (schema_name,) in cur.fetchall():
+				cur.execute(sql.SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(sql.Identifier(schema_name)))
+				cur.execute(sql.SQL("REVOKE CREATE ON SCHEMA {} FROM {}").format(sql.Identifier(schema_name), sql.Identifier(ROLE)))
 			cur.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {};").format(sql.Identifier(ROLE)))
 			privileges = {
 				"games": "SELECT, INSERT, UPDATE",
@@ -142,7 +185,9 @@ def run(grant_only: bool) -> None:
 			elif not role_exists:
 				# The project database exists, but creating a new role does not alter its objects.
 				pass
-			cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}; ").format(sql.Identifier(DATABASE), sql.Identifier(ROLE)))
+			cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {};").format(sql.Identifier(DATABASE), sql.Identifier(ROLE)))
+			cur.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+			cur.execute(sql.SQL("REVOKE CREATE ON SCHEMA public FROM {}; ").format(sql.Identifier(ROLE)))
 		if role_exists:
 			# Verify the existing runtime URL before treating the setup as repeatable.
 			from psycopg import connect

@@ -6,11 +6,11 @@ import {
 	DISCORD_CLIENT_SECRET,
 	NODE_ENV
 } from '$app/env/private';
-import { createHash } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { authAccount, authSession, authUser, authVerification } from '#lib/server/db/schema.js';
 import { getDb } from '#lib/server/db/db.js';
+import { ACCOUNT_LINKING_OPTIONS, mapDiscordProfile } from '#lib/server/auth-profile.js';
 
 export function isAuthConfigured(): boolean {
 	return Boolean(
@@ -42,30 +42,14 @@ function createAuth() {
 			}
 		},
 		account: {
-			accountLinking: {
-				enabled: true,
-				disableImplicitLinking: true,
-				trustedProviders: ['discord']
-			}
+			accountLinking: ACCOUNT_LINKING_OPTIONS
 		},
 		socialProviders: {
 			discord: {
 				clientId: DISCORD_CLIENT_ID!,
 				clientSecret: DISCORD_CLIENT_SECRET!,
 				scope: ['identify', 'email'],
-				mapProfileToUser: (profile) => {
-					const id = String(profile.id);
-					const image = profile.avatar
-						? `https://cdn.discordapp.com/avatars/${id}/${profile.avatar}.png`
-						: undefined;
-					return {
-						email: profile.email ?? `${id}@discord.placeholder.local`,
-						emailVerified: profile.verified === true,
-						name: profile.global_name || profile.username || `Player ${id.slice(-6)}`,
-						username: `player-${createHash('sha256').update(id).digest('hex').slice(0, 10)}`,
-						...(image ? { image } : {})
-					};
-				}
+				mapProfileToUser: mapDiscordProfile
 			}
 		},
 		session: {

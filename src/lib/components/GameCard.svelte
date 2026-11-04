@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
+	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	import type { CompatibilityTier } from '#lib/scoring.js';
 
 	interface CardGame {
@@ -19,24 +20,17 @@
 	class="group surface flex h-full flex-col overflow-hidden rounded-2xl no-underline transition duration-200 hover:-translate-y-1 hover:border-mint/30 hover:shadow-[0_25px_70px_rgba(0,0,0,.34)]"
 	href={`/games/${game.appId}/${game.slug}`}
 >
-	<div class={`relative overflow-hidden ${compact ? 'h-28' : 'h-40'}`}>
-		{#if game.artworkUrl}
-			<img
-				class="size-full object-cover transition duration-500 group-hover:scale-[1.03]"
-				src={game.artworkUrl}
-				alt=""
-				loading="lazy"
-			/>
-		{:else}
-			<div
-				class="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(103,232,194,.23),transparent_36%),linear-gradient(125deg,#17333a,#0d171c_60%,#17291f)]"
-			></div>
-			<div class="absolute -top-10 -right-4 size-44 rounded-full border border-white/[0.06]"></div>
-			<div class="absolute -top-2 -right-1 size-32 rounded-full border border-white/[0.07]"></div>
-			<span class="absolute bottom-3 left-4 text-xs font-bold tracking-[0.14em] text-white/35"
-				>APP {game.appId}</span
-			>
-		{/if}
+	<div class="relative">
+		<GameArtwork
+			appId={game.appId}
+			variant={compact ? 'header' : 'thumbnail'}
+			aspect={compact ? 'header' : 'card'}
+			preferredUrl={game.artworkUrl}
+			alt=""
+			loading="lazy"
+			class="w-full"
+			imageClass="transition duration-500 group-hover:scale-[1.03]"
+		/>
 		{#if game.tier !== 'unknown'}
 			<span class="absolute top-3 right-3"
 				><CompatibilityBadge tier={game.tier as CompatibilityTier} /></span

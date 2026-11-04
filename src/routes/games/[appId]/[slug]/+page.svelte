@@ -1,8 +1,11 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
+	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ReportCard from '#lib/components/ReportCard.svelte';
+	import { getTrustedSteamArtworkUrl } from '#lib/steam-assets.js';
+	import { isIndexableGame } from '#lib/seo-constants.js';
 	let { data }: { data: PageData } = $props();
 	const gamePath = $derived(
 		data.game ? `/games/${data.game.appId}/${data.game.slug}` : `/games/${data.appId}`
@@ -33,6 +36,9 @@
 			: ''
 	);
 	const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
+	const knownHeaderImageUrl = $derived(
+		data.game ? getTrustedSteamArtworkUrl(data.game.headerImageUrl, data.game.appId) : null
+	);
 </script>
 
 <svelte:head>
@@ -48,7 +54,7 @@
 			: 'Game compatibility details are temporarily unavailable.'}
 	/>
 	<link rel="canonical" href={data.canonical} />
-	{#if data.filtered || !data.available || (data.reportData?.total ?? 0) < 3}<meta
+	{#if data.filtered || !data.available || !data.game || !isIndexableGame(data.game.reportCount, data.game.titleAvailable ? data.game.title : null)}<meta
 			name="robots"
 			content="noindex,follow"
 		/>{/if}
@@ -59,13 +65,13 @@
 		<meta property="og:url" content={data.canonical} />
 		<meta name="twitter:title" content={`${data.game.title} Linux Compatibility | TuxGG`} />
 		<meta name="twitter:description" content={data.description} />
-		{#if data.game.headerImageUrl}<meta
-				property="og:image"
-				content={data.game.headerImageUrl}
-			/><meta name="twitter:card" content="summary_large_image" /><meta
-				name="twitter:image"
-				content={data.game.headerImageUrl}
-			/>{:else}<meta name="twitter:card" content="summary" />{/if}
+		{#if knownHeaderImageUrl}<meta property="og:image" content={knownHeaderImageUrl} /><meta
+				name="twitter:card"
+				content="summary_large_image"
+			/><meta name="twitter:image" content={knownHeaderImageUrl} />{:else}<meta
+				name="twitter:card"
+				content="summary"
+			/>{/if}
 		<!-- prettier-ignore -->
 		<script type="application/ld+json">
 {@html jsonLd}
@@ -86,11 +92,17 @@
 			><span>{data.game.title}</span>
 		</nav>
 		<div class="surface relative mt-5 overflow-hidden rounded-3xl">
-			{#if data.game.headerImageUrl}<img
-					class="absolute inset-0 size-full object-cover opacity-20"
-					src={data.game.headerImageUrl}
+			<GameArtwork
+				appId={data.game.appId}
+				variant="header"
+				aspect="header"
+				preferredUrl={data.game.headerImageUrl}
 					alt=""
-				/>{/if}
+				loading="eager"
+				fetchPriority="high"
+				class="absolute inset-0 h-full w-full"
+				imageClass="opacity-30"
+			/>
 			<div class="absolute inset-0 bg-gradient-to-r from-base via-base/95 to-base/60"></div>
 			<div class="relative grid gap-7 p-6 sm:grid-cols-[1fr_auto] sm:items-end sm:p-10">
 				<div>

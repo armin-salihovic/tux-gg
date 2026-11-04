@@ -18,9 +18,9 @@
 			]
 		},
 		{
-			title: 'Game metadata',
+			title: 'Steam artwork',
 			paragraphs: [
-				'The export includes app IDs and titles, but not descriptions, artwork, developers, publishers, or release details. The app currently uses a neutral artwork fallback and links to the Steam store from each app ID. It does not scrape store pages or request third-party metadata on page views.'
+				'The export includes app IDs and titles, but not descriptions, artwork, developers, publishers, or release details. TuxGG constructs Steam CDN artwork URLs from app IDs and uses a local fallback when artwork is unavailable. Artwork remains hosted by Steam; the Steam Subscriber Agreement does not clearly confirm a general right to embed it on a public third-party website. Public deployment requires the operator to confirm or obtain the needed rights. TuxGG does not scrape store pages or request a metadata API.'
 			]
 		},
 		{

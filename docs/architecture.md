@@ -40,3 +40,5 @@ The runtime database role has only the table privileges needed by Better Auth, c
 ## Search and SEO
 
 PostgreSQL full-text search and `pg_trgm` support title searches and typo tolerance. Search/filter pages are noindexed and canonicalize to the catalog. Game pages use stable Steam app IDs, canonical slugs, Open Graph metadata, and `VideoGame` JSON-LD without claiming an AggregateRating. Low-evidence game pages stay out of the index until enough reports are available.
+
+Game cards and detail heroes use `src/lib/steam-assets.ts` to derive Steam CDN image candidates from validated app IDs. Existing `games.artwork_url` and `games.header_image_url` values are used only when they are HTTPS URLs from an allowlisted Steam asset host and match the same app ID. Browser image errors advance to an alternate Steam asset and then a styled TuxGG placeholder. Artwork URLs are not persisted or fetched server-side; the existing columns remain available for explicitly supplied metadata. Open Graph images are emitted only for a trusted header URL already present in the database.

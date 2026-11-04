@@ -2,6 +2,7 @@
 	import GameCard from '#lib/components/GameCard.svelte';
 	import GameSearch from '#lib/components/GameSearch.svelte';
 	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
+	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	import type { PageData } from './$types';
 	let { data }: { data: PageData } = $props();
 	const tiers = [
@@ -197,9 +198,17 @@
 		<div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 			{#each data.recent as game (game.appId)}
 				<a
-					class="surface flex items-center justify-between gap-4 rounded-2xl p-4 no-underline transition hover:border-mint/30"
+					class="surface flex items-center gap-4 rounded-2xl p-4 no-underline transition hover:border-mint/30"
 					href={`/games/${game.appId}/${game.slug}`}
 				>
+					<GameArtwork
+						appId={game.appId}
+						variant="thumbnail"
+						aspect="card"
+						preferredUrl={game.artworkUrl}
+						alt=""
+						class="w-24 shrink-0 rounded-xl"
+					/>
 					<div class="min-w-0">
 						<div class="truncate font-bold text-white">
 							{game.title ?? `Steam app ${game.appId}`}
@@ -208,7 +217,7 @@
 							{game.reportCount.toLocaleString()} imported reports
 						</div>
 					</div>
-					<CompatibilityBadge tier={game.tier} />
+					<span class="shrink-0"><CompatibilityBadge tier={game.tier} /></span>
 				</a>
 			{/each}
 		</div>

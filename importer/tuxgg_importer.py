@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import re
+import shlex
 import sys
 import tarfile
 import unicodedata
@@ -27,6 +28,7 @@ EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
 CHROMEOS_OS_RE = re.compile(r"chrome\s*os|chromebook", re.IGNORECASE)
 CHROME_FIELD_RE = re.compile(r"chromebook|chrome\s*os|chromeos", re.IGNORECASE)
 APP_ID_RE = re.compile(r"^\d+$")
+POSTGRES_PASSWORD_RE = re.compile(r"(postgres(?:ql)?://[^:/\s]+:)[^@/\s]+(@)", re.IGNORECASE)
 ARCHIVE_RE = re.compile(r"^reports_([a-z]{3})(\d{1,2})_(\d{4})\.tar\.gz$", re.IGNORECASE)
 
 LEGACY_RATING_VALUES = {
@@ -512,12 +514,40 @@ def validate_dataset(data_dir: Path, limit_per_archive: int | None = None) -> di
 def _connect(database_url: str | None = None):
     url = database_url or os.environ.get("DATABASE_URL")
     if not url:
-        raise RuntimeError("Set DATABASE_URL to the TuxGG PostgreSQL database before importing")
+        raise RuntimeError("Set DATABASE_URL in the project .env or process environment before importing")
     try:
         import psycopg
     except ImportError as exc:
         raise RuntimeError("Install importer dependencies with: python -m pip install -r importer/requirements.txt") from exc
     return psycopg.connect(url, autocommit=False)
+
+
+def load_project_environment(env_file: Path | None = None) -> None:
+    """Load development settings without replacing variables supplied by the host."""
+    path = env_file or PROJECT_ROOT / ".env"
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("export "):
+            stripped = stripped[7:].lstrip()
+        key, separator, raw_value = stripped.partition("=")
+        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        if key in os.environ:
+            continue
+        try:
+            parsed = shlex.split(raw_value, comments=True, posix=True)
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid .env value for {key}.") from exc
+        os.environ[key] = parsed[0] if parsed else ""
+
+
+def safe_error_message(exc: Exception) -> str:
+    """Remove PostgreSQL URL passwords from errors emitted by clients or helpers."""
+    return POSTGRES_PASSWORD_RE.sub(r"\1[redacted]\2", str(exc))
 
 
 def _report_values(report: NormalizedReport, batch_id: int) -> tuple[Any, ...]:
@@ -562,14 +592,51 @@ def import_archive(
     from psycopg.types.json import Jsonb
 
     checksum = _file_sha256(path)
+    source_schema = "pre-change" if path.name == "reports_oct1_2019.tar.gz" else "latest-snapshot"
+    import_mode = "sample" if limit is not None else "full"
+    sample_limit = limit if import_mode == "sample" else None
+    if sample_limit is not None and sample_limit < 1:
+        raise ValueError("Sample import limit must be at least 1.")
+    if batch_size < 1:
+        raise ValueError("Import batch size must be at least 1.")
     with _connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO import_batches (source_filename, source_checksum, source_schema, status, started_at)
-                   VALUES (%s, %s, %s, 'running', now()) RETURNING id""",
-                (path.name, checksum, "pre-change" if path.name == "reports_oct1_2019.tar.gz" else "latest-snapshot"),
+                """SELECT id, status FROM import_batches
+                   WHERE source_checksum = %s AND source_schema = %s AND import_mode = %s
+                     AND sample_limit IS NOT DISTINCT FROM %s
+                   ORDER BY id DESC LIMIT 1""",
+                (checksum, source_schema, import_mode, sample_limit),
             )
-            batch_id = cur.fetchone()[0]
+            existing_batch = cur.fetchone()
+            if existing_batch and existing_batch[1] == "complete":
+                LOGGER.info("Skipping unchanged completed %s import for %s", import_mode, path.name)
+                return {
+                    "archive": path.name,
+                    "import_mode": import_mode,
+                    "skipped": True,
+                    "reason": "unchanged completed archive",
+                    "inserted_reports": 0,
+                    "duplicate_reports": 0,
+                }
+            if existing_batch:
+                batch_id = existing_batch[0]
+                cur.execute(
+                    """UPDATE import_batches SET status = 'running', started_at = now(), finished_at = NULL,
+                         source_records = 0, inserted_records = 0, duplicate_records = 0,
+                         chromebook_records = 0, invalid_records = 0, missing_fields = '{}'::jsonb,
+                         error_summary = NULL WHERE id = %s""",
+                    (batch_id,),
+                )
+                LOGGER.info("Resuming %s import for %s from its beginning", import_mode, path.name)
+            else:
+                cur.execute(
+                    """INSERT INTO import_batches (
+                         source_filename, source_checksum, source_schema, import_mode, sample_limit, status, started_at
+                       ) VALUES (%s, %s, %s, %s, %s, 'running', now()) RETURNING id""",
+                    (path.name, checksum, source_schema, import_mode, sample_limit),
+                )
+                batch_id = cur.fetchone()[0]
         conn.commit()
 
         stats: Counter[str] = Counter()
@@ -602,11 +669,22 @@ def import_archive(
                     [_report_values(row, batch_id) for row in rows],
                 )
                 inserted = cur.rowcount
+                if import_mode == "full":
+                    cur.executemany(
+                        "INSERT INTO tuxgg_import_fingerprints (source_fingerprint) VALUES (%s) ON CONFLICT DO NOTHING",
+                        [(row.source_fingerprint,) for row in rows],
+                    )
             conn.commit()
             stats["inserted_reports"] += inserted
             stats["duplicate_reports"] += len(rows) - inserted
 
         try:
+            if import_mode == "full":
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "CREATE TEMP TABLE tuxgg_import_fingerprints (source_fingerprint char(64) PRIMARY KEY) ON COMMIT PRESERVE ROWS"
+                    )
+                conn.commit()
             for raw in iter_archive(path):
                 if limit is not None and processed >= limit:
                     break
@@ -626,44 +704,89 @@ def import_archive(
                         write_chunk(buffer)
                         buffer.clear()
             write_chunk(buffer)
+            eligible_records = stats["source_records"] - stats["chromebook_only"] - stats["invalid_records"]
             with conn.cursor() as cur:
+                if import_mode == "full":
+                    cur.execute(
+                        """UPDATE reports report SET imported_batch_id = %s
+                           FROM tuxgg_import_fingerprints staged
+                           WHERE report.source_fingerprint = staged.source_fingerprint
+                             AND report.imported_batch_id <> %s""",
+                        (batch_id, batch_id),
+                    )
                 cur.execute(
-                    """UPDATE import_batches SET status = 'complete', finished_at = now(), source_records = %s,
+                    "UPDATE import_batches SET status = 'complete', finished_at = now() WHERE id = %s",
+                    (batch_id,),
+                )
+                cur.execute("SELECT count(*) FROM reports WHERE imported_batch_id = %s", (batch_id,))
+                reports_for_batch = cur.fetchone()[0]
+                cur.execute(
+                    """UPDATE import_batches SET source_records = %s,
                          inserted_records = %s, duplicate_records = %s, chromebook_records = %s,
                          invalid_records = %s, missing_fields = %s::jsonb
                        WHERE id = %s""",
                     (
                         stats["source_records"],
-                        stats["inserted_reports"],
-                        stats["duplicate_reports"],
+                        reports_for_batch,
+                        max(0, eligible_records - reports_for_batch),
                         stats["chromebook_only"],
                         stats["invalid_records"],
                         json.dumps(dict(missing)),
                         batch_id,
                     ),
                 )
+                summary_count = 0
+                if import_mode == "full":
+                    cur.execute(SUMMARY_SQL)
+                    summary_count = cur.rowcount
+                    cur.execute(DELETE_STALE_SUMMARIES_SQL)
             conn.commit()
         except Exception as exc:
             conn.rollback()
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE import_batches SET status = 'failed', finished_at = now(), error_summary = %s WHERE id = %s",
-                    (f"{type(exc).__name__}: {str(exc)[:500]}", batch_id),
+                    (f"{type(exc).__name__}: {safe_error_message(exc)[:500]}", batch_id),
                 )
             conn.commit()
             raise
 
-    return {"archive": path.name, **dict(stats), "missing_fields": dict(missing)}
+    return {
+        "archive": path.name,
+        "batch_id": batch_id,
+        "import_mode": import_mode,
+        "summaries_rebuilt": summary_count,
+        **dict(stats),
+        "missing_fields": dict(missing),
+    }
 
 
-SUMMARY_SQL = """
-WITH weighted AS (
+VISIBLE_REPORT_PREDICATE = """(
+  EXISTS (
+    SELECT 1 FROM import_batches report_batch
+    WHERE report_batch.id = r.imported_batch_id
+      AND report_batch.status = 'complete' AND report_batch.import_mode = 'full'
+  ) OR EXISTS (
+    SELECT 1 FROM import_batches sample_batch
+    JOIN import_batches completed_full_batch
+      ON completed_full_batch.source_checksum = sample_batch.source_checksum
+      AND completed_full_batch.source_schema = sample_batch.source_schema
+    WHERE sample_batch.id = r.imported_batch_id
+      AND sample_batch.status = 'complete' AND sample_batch.import_mode = 'sample'
+      AND completed_full_batch.status = 'complete' AND completed_full_batch.import_mode = 'full'
+  )
+)"""
+
+SUMMARY_SQL = f"""
+WITH visible_reports AS (
+  SELECT r.* FROM reports r WHERE {VISIBLE_REPORT_PREDICATE}
+), weighted AS (
   SELECT app_id, source_verdict, source_rating, scoring_value, submitted_at,
          CASE
            WHEN scoring_value IS NULL OR submitted_at IS NULL THEN 0::double precision
-           ELSE power(0.5, greatest(0, extract(epoch FROM (now() - submitted_at)) / 31557600.0))
+           ELSE power(0.5, greatest(0, extract(epoch FROM (now() - submitted_at)) / 31536000.0))
          END AS recency_weight
-  FROM reports
+  FROM visible_reports
   WHERE source = 'protondb'
 ), grouped AS (
   SELECT app_id,
@@ -723,12 +846,21 @@ ON CONFLICT (app_id) DO UPDATE SET
   calculated_at = EXCLUDED.calculated_at
 """
 
+DELETE_STALE_SUMMARIES_SQL = f"""
+DELETE FROM compatibility_summaries summary
+WHERE NOT EXISTS (
+  SELECT 1 FROM reports r
+  WHERE r.app_id = summary.app_id AND {VISIBLE_REPORT_PREDICATE}
+)
+"""
+
 
 def rebuild_summaries(database_url: str | None = None) -> int:
     with _connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute(SUMMARY_SQL)
             updated = cur.rowcount
+            cur.execute(DELETE_STALE_SUMMARIES_SQL)
         conn.commit()
     return updated
 
@@ -736,16 +868,18 @@ def rebuild_summaries(database_url: str | None = None) -> int:
 def database_stats(database_url: str | None = None) -> dict[str, Any]:
     with _connect(database_url) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT count(*) FROM games")
+            cur.execute("SELECT count(*) FROM games g JOIN compatibility_summaries s ON s.app_id = g.app_id")
             game_count = cur.fetchone()[0]
-            cur.execute("SELECT count(*) FROM reports WHERE source = 'protondb'")
+            cur.execute(
+                f"SELECT count(*) FROM reports r WHERE r.source = 'protondb' AND {VISIBLE_REPORT_PREDICATE}"
+            )
             report_count = cur.fetchone()[0]
             cur.execute("SELECT count(*) FROM compatibility_summaries")
             summary_count = cur.fetchone()[0]
-            cur.execute("""SELECT source_verdict, count(*) FROM reports WHERE source = 'protondb'
+            cur.execute(f"""SELECT r.source_verdict, count(*) FROM reports r WHERE r.source = 'protondb' AND {VISIBLE_REPORT_PREDICATE}
                            GROUP BY source_verdict ORDER BY source_verdict""")
             verdicts = {str(key or "unknown"): count for key, count in cur.fetchall()}
-            cur.execute("SELECT min(submitted_at), max(submitted_at) FROM reports WHERE source = 'protondb'")
+            cur.execute(f"SELECT min(r.submitted_at), max(r.submitted_at) FROM reports r WHERE r.source = 'protondb' AND {VISIBLE_REPORT_PREDICATE}")
             earliest, latest = cur.fetchone()
             cur.execute("""SELECT coalesce(sum(source_records), 0), coalesce(sum(inserted_records), 0),
                            coalesce(sum(duplicate_records), 0), coalesce(sum(chromebook_records), 0),
@@ -794,6 +928,11 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        load_project_environment()
+    except RuntimeError as exc:
+        LOGGER.error("%s", safe_error_message(exc))
+        return 1
     parser = _parser()
     args = parser.parse_args(argv)
     logging.basicConfig(level=getattr(logging, args.log_level), format="%(levelname)s %(message)s")
@@ -809,8 +948,15 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 paths = args.archive or selected_archives(args.data_dir)
                 limit = None
-            results = [import_archive(path, args.database_url, limit, args.batch_size) for path in paths]
-            if args.command == "import":
+            results = []
+            full_import_changed = False
+            for path in paths:
+                result = import_archive(path, args.database_url, limit, args.batch_size)
+                results.append(result)
+                if args.command == "import" and not result.get("skipped"):
+                    full_import_changed = True
+                    LOGGER.info("Rebuilt %s compatibility summaries atomically", result["summaries_rebuilt"])
+            if args.command == "import" and not full_import_changed:
                 summary_count = rebuild_summaries(args.database_url)
                 LOGGER.info("Rebuilt %s compatibility summaries", summary_count)
             print(json.dumps(results, indent=2, ensure_ascii=False))
@@ -819,7 +965,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "stats":
             print(json.dumps(database_stats(args.database_url), indent=2, ensure_ascii=False))
     except Exception as exc:
-        LOGGER.error("%s: %s", type(exc).__name__, exc)
+        LOGGER.error("%s: %s", type(exc).__name__, safe_error_message(exc))
         return 1
     return 0
 

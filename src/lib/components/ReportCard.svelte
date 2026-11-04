@@ -19,7 +19,15 @@
 		xWindowManager: string | null;
 		launchOptions: string | null;
 		comments: string | null;
+		steamDeckOs: string | null;
+		steamDeckBatteryPerformance: string | null;
+		steamDeckReadability: string | null;
+		steamDeckDidChangeControlLayout: string | null;
+		steamDeckControlLayout: string | null;
+		steamDeckControlLayoutCustomization: string | null;
+		steamDeckFrameRate: string | null;
 	}
+	import { steamDeckObservations } from '#lib/steam-deck.js';
 	let { report }: { report: Report } = $props();
 	const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
 	const sourceOutcome = $derived(
@@ -33,6 +41,17 @@
 		[report.protonVariant, report.protonVersion, report.customProtonVersion]
 			.filter(Boolean)
 			.join(' · ')
+	);
+	const deckObservations = $derived(
+		steamDeckObservations({
+			os: report.steamDeckOs,
+			batteryPerformance: report.steamDeckBatteryPerformance,
+			readability: report.steamDeckReadability,
+			didChangeControlLayout: report.steamDeckDidChangeControlLayout,
+			controlLayout: report.steamDeckControlLayout,
+			controlLayoutCustomization: report.steamDeckControlLayoutCustomization,
+			frameRate: report.steamDeckFrameRate
+		})
 	);
 </script>
 
@@ -60,6 +79,25 @@
 		<p class="mt-5 text-sm leading-7 break-words whitespace-pre-wrap text-slate-200">
 			{report.comments}
 		</p>
+	{/if}
+
+	{#if deckObservations.length}
+		<div class="mt-5 rounded-xl border border-mint/15 bg-mint/[0.04] p-4">
+			<h3 class="text-xs font-bold text-mint">Player-reported Steam Deck observations</h3>
+			<p class="mt-1 text-[0.68rem] leading-5 text-muted">
+				Imported ProtonDB questionnaire responses; these are not Valve verification claims.
+			</p>
+			<dl class="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+				{#each deckObservations as observation (observation.label)}
+					<div>
+						<dt class="text-[0.65rem] font-bold tracking-[0.1em] text-slate-500 uppercase">
+							{observation.label}
+						</dt>
+						<dd class="mt-1 text-slate-200">{observation.value}</dd>
+					</div>
+				{/each}
+			</dl>
+		</div>
 	{/if}
 
 	<div

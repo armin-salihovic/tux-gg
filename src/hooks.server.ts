@@ -2,6 +2,7 @@ import { building } from '$app/env';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import type { Handle } from '@sveltejs/kit/hooks';
 import { getAuth, isAuthConfigured } from '#lib/server/auth.js';
+import { applyAuthenticatedCachePolicy } from '#lib/server/cache-policy.js';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = null;
@@ -21,7 +22,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 				Response.json({ error: 'Discord sign-in is not configured.' }, { status: 503 })
 			);
 		}
-		return secure(await resolve(event));
+		return secure(applyAuthenticatedCachePolicy(await resolve(event), false, event.url.pathname));
 	}
 
 	const auth = getAuth();
@@ -51,5 +52,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 			);
 		}
 	}
-	return secure(await svelteKitHandler({ event, resolve, auth, building }));
+	const response = await svelteKitHandler({ event, resolve, auth, building });
+	return secure(
+		applyAuthenticatedCachePolicy(response, Boolean(event.locals.user), event.url.pathname)
+	);
 };

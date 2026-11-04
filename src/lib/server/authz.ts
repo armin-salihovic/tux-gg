@@ -10,20 +10,23 @@ export function requireUser(event: RequestEvent) {
 	return event.locals.user;
 }
 
+export function isSteamLinkedProvider(providerId: string | null): boolean {
+	return providerId === 'steam';
+}
+
 export async function canPublishReports(userId: string): Promise<boolean> {
-	const [steamIdentity] = await getDb()
-		.select({ id: authAccount.id })
+	const linkedAccounts = await getDb()
+		.select({ providerId: authAccount.providerId })
 		.from(authAccount)
 		.where(
 			and(
 				eq(authAccount.userId, userId),
-				eq(authAccount.providerId, 'steam'),
 				isNotNull(authAccount.accountId),
 				ne(authAccount.accountId, '')
 			)
 		)
-		.limit(1);
-	return Boolean(steamIdentity);
+		.limit(10);
+	return linkedAccounts.some((account) => isSteamLinkedProvider(account.providerId));
 }
 
 export async function requireSteamLinkedPublisher(event: RequestEvent) {

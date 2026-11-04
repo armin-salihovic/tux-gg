@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import {
 	bigserial,
 	boolean,
@@ -63,12 +63,19 @@ export const importBatches = pgTable(
 		chromebookRecords: integer('chromebook_records').notNull().default(0),
 		invalidRecords: integer('invalid_records').notNull().default(0),
 		missingFields: jsonb('missing_fields').$type<Record<string, number>>().notNull().default({}),
-		errorSummary: text('error_summary')
+		errorSummary: text('error_summary'),
+		importMode: text('import_mode').notNull().default('full'),
+		sampleLimit: integer('sample_limit')
 	},
 	(table) => [
-		index('import_batches_started_idx').on(table.startedAt),
+		index('import_batches_started_idx').on(desc(table.startedAt)),
 		index('import_batches_checksum_idx').on(table.sourceChecksum),
-		check('import_batches_status_check', sql`${table.status} in ('running', 'complete', 'failed')`)
+		check('import_batches_status_check', sql`${table.status} in ('running', 'complete', 'failed')`),
+		check('import_batches_mode_check', sql`${table.importMode} in ('full', 'sample')`),
+		check(
+			'import_batches_sample_limit_check',
+			sql`(${table.importMode} = 'full' and ${table.sampleLimit} is null) or (${table.importMode} = 'sample' and ${table.sampleLimit} > 0)`
+		)
 	]
 );
 
@@ -108,7 +115,7 @@ export const reports = pgTable(
 	},
 	(table) => [
 		uniqueIndex('reports_source_fingerprint_unique').on(table.sourceFingerprint),
-		index('reports_app_date_idx').on(table.appId, table.submittedAt),
+		index('reports_app_date_idx').on(table.appId, desc(table.submittedAt)),
 		index('reports_app_gpu_vendor_idx').on(table.appId, table.gpuVendor),
 		index('reports_app_distribution_idx').on(table.appId, table.distribution),
 		index('reports_app_proton_idx').on(table.appId, table.protonVariant, table.protonVersion),
@@ -150,8 +157,8 @@ export const compatibilitySummaries = pgTable(
 			.defaultNow()
 	},
 	(table) => [
-		index('compatibility_summaries_tier_count_idx').on(table.tier, table.reportCount),
-		index('compatibility_summaries_last_report_idx').on(table.lastReportAt),
+		index('compatibility_summaries_tier_count_idx').on(table.tier, desc(table.reportCount)),
+		index('compatibility_summaries_last_report_idx').on(desc(table.lastReportAt)),
 		check(
 			'compatibility_summaries_tier_check',
 			sql`${table.tier} in ('platinum', 'gold', 'silver', 'bronze', 'borked', 'unknown')`
@@ -266,8 +273,8 @@ export const nativeReports = pgTable(
 		publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' })
 	},
 	(table) => [
-		index('native_reports_game_date_idx').on(table.appId, table.createdAt),
-		index('native_reports_author_idx').on(table.authorId, table.createdAt),
+		index('native_reports_game_date_idx').on(table.appId, desc(table.createdAt)),
+		index('native_reports_author_idx').on(table.authorId, desc(table.createdAt)),
 		check('native_reports_verdict_check', sql`${table.verdict} in ('yes', 'no')`),
 		check(
 			'native_reports_moderation_check',

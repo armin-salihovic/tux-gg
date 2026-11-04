@@ -17,8 +17,8 @@ TuxGG is a searchable Linux and Steam Deck compatibility catalog built with Svel
 4. Install importer dependencies with `python -m pip install -r importer/requirements.txt`.
 5. Run `pnpm db:setup`. It generates a random application password if needed, writes local connection strings to the ignored `.env`, and grants the runtime role table-level access without schema or role creation privileges.
 6. Run `pnpm db:migrate` with the migration/admin URL, then `pnpm db:grant` to refresh runtime grants for the new tables.
-7. Run `pnpm import:inspect` and `pnpm import:validate` to inspect the selected source snapshots. Use `pnpm import:sample` for a 1,000-row-per-snapshot smoke import, then `pnpm import:stats` to inspect it.
-8. Run `pnpm import:all` to import the complete selected corpus and rebuild compatibility summaries.
+7. Run `pnpm import:inspect` and `pnpm import:validate` to inspect the selected source snapshots. Use `pnpm import:sample` for a 1,000-row-per-snapshot smoke import, then `pnpm import:stats` to inspect it. Sample batches are marked as samples and do not contribute to public reports or summaries until the matching complete archive is imported.
+8. Run `pnpm import:all` to import the complete selected corpus and rebuild compatibility summaries. Completed unchanged archives are skipped; failed full imports replay from the start and reuse report fingerprints, while incomplete data remains out of public summaries.
 9. Start the app with `pnpm dev`.
 
 For optional Discord sign-in, configure `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `DISCORD_CLIENT_ID`, and `DISCORD_CLIENT_SECRET` in `.env`. The site remains browseable without Discord configuration; sign-in returns a clear unavailable state. Set `PUBLIC_SITE_URL` to the canonical public origin and `PUBLIC_CONTACT_EMAIL` to a monitored address before public deployment.
@@ -38,6 +38,8 @@ For optional Discord sign-in, configure `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`,
 | `pnpm import:all`      | Import all normalized records and rebuild summary rows              |
 
 The importer uses the `DATABASE_URL` runtime credential. Drizzle migrations use `MIGRATION_DATABASE_URL` or `PGADMIN_URL`, which must have schema/extension privileges. The runtime account cannot create tables, roles, databases, or extensions. Run the grant command after each schema migration.
+
+The importer loads the project `.env` for local commands such as `pnpm import:sample` and `pnpm import:all`. Variables already exported by the shell or injected by production take precedence; connection credentials are not printed.
 
 ## Dataset, scoring, and limitations
 
