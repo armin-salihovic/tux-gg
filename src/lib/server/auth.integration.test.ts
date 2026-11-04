@@ -19,6 +19,7 @@ const codes = ['first-login', 'returning-login', 'matching-email', 'second-user'
 const fakeProfiles = new Map<string, Record<string, unknown>>();
 const tokenToProfileId = new Map<string, string>();
 const originalFetch = globalThis.fetch;
+let loginRequestCount = 0;
 let auth: ReturnType<typeof getAuth>;
 let firstUserId: string | undefined;
 let secondUserId: string | undefined;
@@ -36,10 +37,15 @@ function setCookieHeaders(response: Response): string[] {
 }
 
 async function beginLogin(code: string) {
+	const testClientIp = `192.0.2.${10 + loginRequestCount++}`;
 	const response = await auth.handler(
 		new Request(`${baseURL}/api/auth/sign-in/social`, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json', origin: baseURL },
+			headers: {
+				'content-type': 'application/json',
+				origin: baseURL,
+				'x-forwarded-for': testClientIp
+			},
 			body: JSON.stringify({
 				provider: 'discord',
 				callbackURL: '/settings',
