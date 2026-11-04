@@ -106,7 +106,7 @@ function installDiscordMocks() {
 					scope: 'identify email'
 				});
 			}
-			if (url.pathname.endsWith('/users/@me')) {
+			if (decodeURIComponent(url.pathname).endsWith('/users/@me')) {
 				const token = new Headers(init?.headers).get('authorization')?.replace(/^Bearer\s+/i, '');
 				const code = token ? tokenToProfileId.get(token) : undefined;
 				const profile = code ? fakeProfiles.get(code) : undefined;
