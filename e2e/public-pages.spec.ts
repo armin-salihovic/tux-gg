@@ -341,7 +341,7 @@ test('account settings, My Reports, and report forms require sign-in', async ({ 
 			platform: 'steam_deck',
 			content: 'This guest must not submit a report.'
 		},
-		headers: { origin: 'http://127.0.0.1:4179' },
+		headers: { origin: 'http://127.0.0.1:4179', accept: 'text/html' },
 		maxRedirects: 0
 	});
 	expect(reportSubmission.status()).toBe(303);

@@ -88,7 +88,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 
 		const unsafeLookingText = `Browser journey ${suffix}: <img src=x onerror=alert(1)>`;
 		await page.getByLabel('Your experience').fill(unsafeLookingText);
-		await page.getByLabel('Proton version').fill('GE-Proton 9-20');
+		await page.getByLabel('Proton version', { exact: true }).fill('GE-Proton 9-20');
 		const reportId = await page.locator('input[name="id"]').inputValue();
 		await page.locator('form').evaluate((form) => {
 			for (const [name, value] of [
