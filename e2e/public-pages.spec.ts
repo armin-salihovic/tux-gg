@@ -13,12 +13,16 @@ test('login page offers Steam-only sign-in and starts a mocked Steam handoff', a
 	let loginRequests = 0;
 	await page.route('**/api/auth/steam/login*', async (route) => {
 		loginRequests += 1;
+		const authorizationURL = new URL('https://steamcommunity.com/openid/login');
+		authorizationURL.search = new URLSearchParams({
+			'openid.mode': 'checkid_setup',
+			'openid.realm': 'http://localhost:4179/',
+			'openid.return_to': 'http://localhost:4179/api/auth/steam/callback?flow=flow&state=state'
+		}).toString();
 		await route.fulfill({
 			status: 200,
 			contentType: 'application/json',
-			body: JSON.stringify({
-				url: 'https://steamcommunity.com/openid/login?openid.mode=checkid_setup'
-			})
+			body: JSON.stringify({ url: authorizationURL.toString() })
 		});
 	});
 	await page.route('https://steamcommunity.com/**', async (route) => {
@@ -42,9 +46,70 @@ test('login page offers Steam-only sign-in and starts a mocked Steam handoff', a
 		page.getByRole('link', { name: /continue browsing without signing in/i })
 	).toHaveAttribute('href', '/games');
 	await page.getByRole('button', { name: 'Sign in through Steam' }).click();
-	await expect(page).toHaveURL('https://steamcommunity.com/openid/login?openid.mode=checkid_setup');
+	await expect(page).toHaveURL(
+		/https:\/\/steamcommunity\.com\/openid\/login\?openid\.mode=checkid_setup/
+	);
 	await expect(page.getByRole('heading', { name: 'Mock Steam OpenID' })).toBeVisible();
 	expect(loginRequests).toBe(1);
+});
+
+test('login page shows actionable errors for rejected and unavailable auth responses', async ({
+	page
+}) => {
+	let loginRequests = 0;
+	const cases = [
+		{
+			status: 403,
+			body: JSON.stringify({ error: 'request_rejected' }),
+			contentType: 'application/json',
+			message: 'Sign-in request was rejected. Reload the page and try again.'
+		},
+		{
+			status: 500,
+			body: '<html>Internal server error</html>',
+			contentType: 'text/html',
+			message: 'Authentication service is temporarily unavailable. Try again shortly.'
+		},
+		{
+			status: 503,
+			body: JSON.stringify({ error: 'auth_not_configured' }),
+			contentType: 'application/json',
+			message:
+				'Authentication is not configured. Check the local sign-in settings and restart the server.'
+		}
+	];
+
+	for (const testCase of cases) {
+		await page.route('**/api/auth/steam/login*', (route) => {
+			loginRequests += 1;
+			return route.fulfill({
+				status: testCase.status,
+				contentType: testCase.contentType,
+				body: testCase.body
+			});
+		});
+		await page.goto('/login');
+		await page.waitForLoadState('networkidle');
+		await page.getByRole('button', { name: 'Sign in through Steam' }).click();
+		await expect.poll(() => loginRequests).toBeGreaterThan(0);
+		await expect(page.getByRole('alert')).toHaveText(testCase.message);
+		await page.unroute('**/api/auth/steam/login*');
+	}
+});
+
+test('login page distinguishes a network failure from an HTTP error', async ({ page }) => {
+	let loginRequests = 0;
+	await page.route('**/api/auth/steam/login*', (route) => {
+		loginRequests += 1;
+		return route.abort('failed');
+	});
+	await page.goto('/login');
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: 'Sign in through Steam' }).click();
+	await expect.poll(() => loginRequests).toBe(1);
+	await expect(page.getByRole('alert')).toHaveText(
+		'Could not reach the sign-in service. Check your connection and try again.'
+	);
 });
 
 test('public policy pages are available and robots lists the sitemap', async ({ page }) => {

@@ -8,6 +8,7 @@ import { and, eq, like, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '#lib/server/db/db.js';
 import { authUser, authVerification } from '#lib/server/db/schema.js';
+import { logAuthDiagnostic } from '#lib/server/auth-diagnostics.js';
 import {
 	buildSteamOpenIDUrl,
 	fetchSteamProfile,
@@ -188,22 +189,49 @@ export function steamOpenID(apiKey: string | undefined, siteURL: string): Better
 					metadata: { openapi: { description: 'Start Steam OpenID sign-in.' } }
 				},
 				async (ctx) => {
-					const basePath = authPath(ctx);
-					const origin = getTrustedSiteOrigin(siteURL, ctx.context.baseURL, basePath);
+					let basePath: string;
+					let origin: string;
+					try {
+						basePath = authPath(ctx);
+						origin = getTrustedSiteOrigin(siteURL, ctx.context.baseURL, basePath);
+					} catch (error) {
+						logAuthDiagnostic('Steam authentication URL validation', error);
+						ctx.setStatus(503);
+						return ctx.json({ error: 'auth_not_configured' });
+					}
+					const requestOrigin = ctx.request.headers.get('origin');
+					let parsedRequestOrigin: string | undefined;
+					try {
+						parsedRequestOrigin = requestOrigin ? new URL(requestOrigin).origin : undefined;
+					} catch {
+						parsedRequestOrigin = undefined;
+					}
+					if (parsedRequestOrigin !== origin) {
+						logAuthDiagnostic('Steam login request validation');
+						ctx.setStatus(403);
+						return ctx.json({ error: 'request_rejected' });
+					}
 					const realm = `${origin}/`;
 					const flowId = randomBytes(16).toString('hex');
-					const generated = await generateGenericState(
-						ctx,
-						{
-							callbackURL: new URL('/settings', origin).toString(),
-							errorURL: new URL('/login', origin).toString(),
-							codeVerifier: randomBytes(32).toString('base64url'),
-							expiresAt: Date.now() + FLOW_TTL_MS,
-							steamFlowId: flowId,
-							steamRealm: realm
-						} as StateData,
-						{ cookieName: flowCookieName(flowId) }
-					);
+					let generated: Awaited<ReturnType<typeof generateGenericState>>;
+					try {
+						generated = await generateGenericState(
+							ctx,
+							{
+								callbackURL: new URL('/settings', origin).toString(),
+								errorURL: new URL('/login', origin).toString(),
+								codeVerifier: randomBytes(32).toString('base64url'),
+								expiresAt: Date.now() + FLOW_TTL_MS,
+								steamFlowId: flowId,
+								steamRealm: realm
+							} as StateData,
+							{ cookieName: flowCookieName(flowId) }
+						);
+					} catch (error) {
+						logAuthDiagnostic('Steam authentication state persistence', error);
+						ctx.setStatus(503);
+						return ctx.json({ error: 'auth_unavailable' });
+					}
 					const returnTo = new URL(`${authPath(ctx)}/steam/callback`, origin);
 					returnTo.searchParams.set('flow', flowId);
 					returnTo.searchParams.set('state', generated.state);

@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { Pool } from 'pg';
 import type { RequestEvent } from '@sveltejs/kit';
 import { getAuth } from '#lib/server/auth.js';
 import { canPublishReports } from '#lib/server/authz.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
-import { authAccount, authSession, authUser } from '#lib/server/db/schema.js';
+import { authAccount, authSession, authUser, authVerification } from '#lib/server/db/schema.js';
 import { getProfile } from '#lib/server/db/queries.js';
 import { STEAM_OPENID_NAMESPACE, STEAM_OPENID_URL } from './steam-openid.js';
 
@@ -25,6 +26,18 @@ let steamUnavailable = false;
 let steamProfileUnavailable = false;
 let auth: ReturnType<typeof getAuth>;
 let firstUserId: string | undefined;
+
+function adminTestDatabaseUrl(): string {
+	const configured = process.env.PGADMIN_URL;
+	if (!configured)
+		throw new Error('Auth integration tests require PGADMIN_URL for isolated failure tests.');
+	const url = new URL(configured);
+	if (url.pathname.replace(/^\//, '') !== 'postgres') {
+		throw new Error('Auth integration test administrator URL must connect to postgres.');
+	}
+	url.pathname = '/tuxgg_test';
+	return url.toString();
+}
 
 function setCookieHeaders(response: Response): string[] {
 	return response.headers.getSetCookie?.() ?? [response.headers.get('set-cookie') ?? ''];
@@ -222,21 +235,47 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		}
 		const permissions = await pool.query(
 			'SELECT current_user AS role, ' +
+				"has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage, " +
 				"has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read_games, " +
 				"has_table_privilege(current_user, 'public.reports', 'SELECT') AS can_read_reports, " +
 				"has_table_privilege(current_user, 'public.reports', 'INSERT') AS can_write_reports, " +
 				"has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE') AS can_update_summaries, " +
 				"has_table_privilege(current_user, 'public.user', 'SELECT') AS can_read_auth_users, " +
-				"has_table_privilege(current_user, 'public.user', 'UPDATE') AS can_lock_auth_users"
+				"has_table_privilege(current_user, 'public.user', 'UPDATE') AS can_lock_auth_users, " +
+				"has_table_privilege(current_user, 'public.account', 'SELECT') AS can_read_accounts, " +
+				"has_table_privilege(current_user, 'public.account', 'INSERT') AS can_insert_accounts, " +
+				"has_table_privilege(current_user, 'public.account', 'UPDATE') AS can_update_accounts, " +
+				"has_table_privilege(current_user, 'public.account', 'DELETE') AS can_delete_accounts, " +
+				"has_table_privilege(current_user, 'public.session', 'SELECT') AS can_read_sessions, " +
+				"has_table_privilege(current_user, 'public.session', 'INSERT') AS can_insert_sessions, " +
+				"has_table_privilege(current_user, 'public.session', 'UPDATE') AS can_update_sessions, " +
+				"has_table_privilege(current_user, 'public.session', 'DELETE') AS can_delete_sessions, " +
+				"has_table_privilege(current_user, 'public.verification', 'SELECT') AS can_read_verification, " +
+				"has_table_privilege(current_user, 'public.verification', 'INSERT') AS can_insert_verification, " +
+				"has_table_privilege(current_user, 'public.verification', 'UPDATE') AS can_update_verification, " +
+				"has_table_privilege(current_user, 'public.verification', 'DELETE') AS can_delete_verification"
 		);
 		expect(permissions.rows[0]).toEqual({
 			role: 'tuxgg_web',
+			schema_usage: true,
 			can_read_games: true,
 			can_read_reports: true,
 			can_write_reports: false,
 			can_update_summaries: false,
 			can_read_auth_users: true,
-			can_lock_auth_users: true
+			can_lock_auth_users: true,
+			can_read_accounts: true,
+			can_insert_accounts: true,
+			can_update_accounts: true,
+			can_delete_accounts: true,
+			can_read_sessions: true,
+			can_insert_sessions: true,
+			can_update_sessions: true,
+			can_delete_sessions: true,
+			can_read_verification: true,
+			can_insert_verification: true,
+			can_update_verification: true,
+			can_delete_verification: true
 		});
 		// Exercise the actual FK check Better Auth hits when inserting an account for a new user.
 		// Roll the probe back so the auth suite only leaves its intentionally isolated test data.
@@ -322,6 +361,77 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		const publicProfile = await getProfile(user[0]!.username);
 		expect(publicProfile).not.toHaveProperty('email');
 		expect(JSON.stringify(publicProfile)).not.toContain('@steam.invalid');
+	});
+
+	it('persists Better Auth login state before returning the Steam authorization URL', async () => {
+		const flow = await beginLogin();
+		const callback = new URL(flow.returnTo);
+		const state = callback.searchParams.get('state');
+		const flowId = callback.searchParams.get('flow');
+		expect(state).toBeTruthy();
+		expect(flowId).toMatch(/^[a-f0-9]{32}$/);
+		const [verification] = await getDb()
+			.select({ identifier: authVerification.identifier, value: authVerification.value })
+			.from(authVerification)
+			.where(eq(authVerification.identifier, `auth-state:${state}`))
+			.limit(1);
+		expect(verification).toBeTruthy();
+		const savedState = JSON.parse(verification!.value) as {
+			steamFlowId?: string;
+			steamRealm?: string;
+			callbackURL?: string;
+		};
+		expect(savedState.steamFlowId).toBe(flowId);
+		expect(savedState.steamRealm).toBe(`${new URL(siteURL).origin}/`);
+		expect(savedState.callbackURL).toBe(`${new URL(siteURL).origin}/settings`);
+	});
+
+	it('rejects a mismatched request origin before creating login state', async () => {
+		const response = await auth.handler(
+			new Request(`${baseURL}/api/auth/steam/login`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					origin: 'http://attacker.invalid',
+					'x-forwarded-for': '192.0.2.240'
+				},
+				body: '{}'
+			})
+		);
+		expect(response.status).toBe(403);
+	});
+
+	it('returns a safe unavailable response when verification-state insertion is denied', async () => {
+		const admin = new Pool({
+			connectionString: adminTestDatabaseUrl(),
+			connectionTimeoutMillis: 5_000
+		});
+		try {
+			const marker = await admin.query(
+				'SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
+			);
+			expect(marker.rows[0]?.marker).toBe('tuxgg_disposable_test_database_v1');
+			await admin.query('REVOKE INSERT ON TABLE public.verification FROM tuxgg_web');
+			try {
+				const response = await auth.handler(
+					new Request(`${baseURL}/api/auth/steam/login`, {
+						method: 'POST',
+						headers: {
+							'content-type': 'application/json',
+							origin: baseURL,
+							'x-forwarded-for': '192.0.2.241'
+						},
+						body: '{}'
+					})
+				);
+				expect(response.status).toBe(503);
+				expect(await response.json()).toEqual({ error: 'auth_unavailable' });
+			} finally {
+				await admin.query('GRANT INSERT ON TABLE public.verification TO tuxgg_web');
+			}
+		} finally {
+			await admin.end();
+		}
 	});
 
 	it('signs returning Steam users into the same account without duplicates', async () => {

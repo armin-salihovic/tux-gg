@@ -14,6 +14,12 @@ describe('trusted Steam site origin', () => {
 		).toBe('http://localhost:5174');
 	});
 
+	it('supports 127.0.0.1 development on configured ports', () => {
+		expect(
+			getTrustedSiteOrigin('http://127.0.0.1:5174', 'http://127.0.0.1:5174/api/auth', '/api/auth')
+		).toBe('http://127.0.0.1:5174');
+	});
+
 	it.each([
 		{
 			label: 'malformed site URL',

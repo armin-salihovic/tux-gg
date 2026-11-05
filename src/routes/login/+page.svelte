@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { startSteamLogin } from '#lib/auth-login.js';
+
 	let busy = $state(false);
 	let message = $state(
 		typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('error')
@@ -9,23 +11,13 @@
 	async function signIn() {
 		busy = true;
 		message = '';
-		try {
-			const response = await fetch('/api/auth/steam/login', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: '{}'
-			});
-			const result = (await response.json()) as { url?: string };
-			if (!response.ok || !result.url) {
-				throw new Error(
-					'Steam sign-in could not start. Check the server configuration and try again.'
-				);
-			}
-			window.location.assign(result.url);
-		} catch {
-			message = 'Steam sign-in could not start. Check your connection and try again.';
+		const result = await startSteamLogin();
+		if ('error' in result) {
+			message = result.error;
 			busy = false;
+			return;
 		}
+		window.location.assign(result.url);
 	}
 </script>
 

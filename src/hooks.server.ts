@@ -2,6 +2,7 @@ import { building } from '$app/env';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import type { Handle } from '@sveltejs/kit/hooks';
 import { getAuth, isAuthConfigured } from '#lib/server/auth.js';
+import { logAuthDiagnostic, logAuthRequestRejection } from '#lib/server/auth-diagnostics.js';
 import { applyResponseCachePolicy } from '#lib/server/cache-policy.js';
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -18,14 +19,24 @@ export const handle: Handle = async ({ event, resolve }) => {
 	};
 	if (!isAuthConfigured()) {
 		if (event.url.pathname.startsWith('/api/auth/')) {
-			return secure(
-				Response.json({ error: 'Sign-in is temporarily unavailable.' }, { status: 503 })
-			);
+			logAuthDiagnostic('environment configuration');
+		}
+		if (event.url.pathname.startsWith('/api/auth/')) {
+			return secure(Response.json({ error: 'auth_not_configured' }, { status: 503 }));
 		}
 		return secure(applyResponseCachePolicy(await resolve(event), false, event.url.pathname));
 	}
 
-	const auth = getAuth();
+	let auth: ReturnType<typeof getAuth>;
+	try {
+		auth = getAuth();
+	} catch (error) {
+		logAuthDiagnostic('Better Auth initialization', error);
+		if (event.url.pathname.startsWith('/api/auth/')) {
+			return secure(Response.json({ error: 'auth_unavailable' }, { status: 503 }));
+		}
+		throw error;
+	}
 	try {
 		if (!building) {
 			const session = await auth.api.getSession({ headers: event.request.headers });
@@ -42,16 +53,24 @@ export const handle: Handle = async ({ event, resolve }) => {
 				};
 			}
 		}
-	} catch {
+	} catch (error) {
+		logAuthDiagnostic('authentication session lookup', error);
 		if (event.url.pathname.startsWith('/api/auth/')) {
-			return secure(
-				Response.json(
-					{ error: 'Authentication service is temporarily unavailable.' },
-					{ status: 503 }
-				)
-			);
+			return secure(Response.json({ error: 'auth_unavailable' }, { status: 503 }));
 		}
 	}
-	const response = await svelteKitHandler({ event, resolve, auth, building });
+	let response: Response;
+	try {
+		response = await svelteKitHandler({ event, resolve, auth, building });
+	} catch (error) {
+		logAuthDiagnostic('Better Auth request handler', error);
+		if (event.url.pathname.startsWith('/api/auth/')) {
+			return secure(Response.json({ error: 'auth_unavailable' }, { status: 503 }));
+		}
+		throw error;
+	}
+	if (event.url.pathname === '/api/auth/steam/login' && response.status >= 400) {
+		logAuthRequestRejection(response.status);
+	}
 	return secure(applyResponseCachePolicy(response, Boolean(event.locals.user), event.url.pathname));
 };
