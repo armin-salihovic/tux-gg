@@ -80,7 +80,8 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await page.getByRole('link', { name: 'Add Device' }).click();
 		await expect(page).toHaveURL(new RegExp('/settings/devices/new\\?returnTo='));
 		await page.getByLabel('Device name').fill('Main Gaming PC');
-		await page.getByLabel('Steam System Information').fill(`Computer Information:
+		await page.getByRole('textbox', { name: 'Steam System Information' })
+			.fill(`Computer Information:
 Manufacturer: Gigabyte Technology Co., Ltd.
 Model: B850M DS3H
 Form Factor: Desktop
