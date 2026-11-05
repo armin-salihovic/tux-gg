@@ -46,13 +46,14 @@ function sessionCookie(response: Response): string {
 }
 
 async function beginLogin() {
+	const clientIp = `192.0.2.${(nonceSequence++ % 200) + 1}`;
 	const response = await auth.handler(
 		new Request(`${baseURL}/api/auth/steam/login`, {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json',
 				origin: baseURL,
-				'x-forwarded-for': `192.0.2.${(nonceSequence++ % 200) + 1}`
+				'x-forwarded-for': clientIp
 			},
 			body: '{}'
 		})
@@ -69,7 +70,7 @@ async function beginLogin() {
 	expect(callback.origin).toBe(new URL(siteURL).origin);
 	expect(callback.pathname).toBe('/api/auth/steam/callback');
 	expect(authorizationURL.searchParams.get('openid.realm')).toBe(`${new URL(siteURL).origin}/`);
-	return { response, authorizationURL, returnTo, cookies: cookiePairs(response) };
+	return { response, authorizationURL, returnTo, cookies: cookiePairs(response), clientIp };
 }
 
 function makeCallback(
@@ -124,13 +125,16 @@ async function finishLogin(
 	} = {},
 	cookies = flow.cookies
 ) {
-	return finishCallback(startAssertion(flow, options), cookies);
+	return finishCallback(startAssertion(flow, options), cookies, flow.clientIp);
 }
 
-async function finishCallback(callback: URL, cookies: string) {
+async function finishCallback(callback: URL, cookies: string, clientIp: string) {
 	return auth.handler(
 		new Request(callback, {
-			headers: cookies ? { cookie: cookies } : {}
+			headers: {
+				...(cookies ? { cookie: cookies } : {}),
+				'x-forwarded-for': clientIp
+			}
 		})
 	);
 }
@@ -375,7 +379,11 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			'openid.identity',
 			`https://steamcommunity.com/openid/id/${tamperedIdentity}`
 		);
-		const tampered = await finishCallback(tamperedCallback, tamperedFlow.cookies);
+		const tampered = await finishCallback(
+			tamperedCallback,
+			tamperedFlow.cookies,
+			tamperedFlow.clientIp
+		);
 		expect(tampered.status).toBe(302);
 		expect(tampered.headers.get('location')).toContain('steam_verification_failed');
 		expect(sessionCookie(tampered)).toBe('');
@@ -395,7 +403,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		const unexpectedProviderId = '76561198999999997';
 		const callback = makeCallback(flow, { steamId: unexpectedProviderId });
 		callback.searchParams.set('openid.op_endpoint', 'https://attacker.invalid/openid/login');
-		const response = await finishCallback(callback, flow.cookies);
+		const response = await finishCallback(callback, flow.cookies, flow.clientIp);
 		expect(response.status).toBe(302);
 		expect(response.headers.get('location')).toContain('steam_verification_failed');
 		expect(sessionCookie(response)).toBe('');
@@ -417,7 +425,11 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		const wrongOriginId = '76561198999999995';
 		const wrongOriginCallback = makeCallback(wrongOriginFlow, { steamId: wrongOriginId });
 		wrongOriginCallback.hostname = 'attacker.invalid';
-		const wrongOriginResponse = await finishCallback(wrongOriginCallback, wrongOriginFlow.cookies);
+		const wrongOriginResponse = await finishCallback(
+			wrongOriginCallback,
+			wrongOriginFlow.cookies,
+			wrongOriginFlow.clientIp
+		);
 		expect(wrongOriginResponse.headers.get('location')).toContain('steam_state_invalid');
 		expect(sessionCookie(wrongOriginResponse)).toBe('');
 		await expectNoSteamAccount(wrongOriginId);
