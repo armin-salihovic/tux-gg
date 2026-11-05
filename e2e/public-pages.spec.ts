@@ -9,12 +9,23 @@ test('homepage renders search and security headers without a database', async ({
 	await expect(page.getByRole('link', { name: /browse the catalog/i })).toBeVisible();
 });
 
-test('login page offers Steam-only sign-in and reports startup errors', async ({ page }) => {
-	await page.route('**/api/auth/steam/login', async (route) => {
+test('login page offers Steam-only sign-in and starts a mocked Steam handoff', async ({ page }) => {
+	let loginRequests = 0;
+	await page.route('**/api/auth/steam/login*', async (route) => {
+		loginRequests += 1;
 		await route.fulfill({
-			status: 503,
+			status: 200,
 			contentType: 'application/json',
-			body: '{"error":"unavailable"}'
+			body: JSON.stringify({
+				url: 'https://steamcommunity.com/openid/login?openid.mode=checkid_setup'
+			})
+		});
+	});
+	await page.route('https://steamcommunity.com/**', async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: 'text/html',
+			body: '<!doctype html><html><body><h1>Mock Steam OpenID</h1></body></html>'
 		});
 	});
 	await page.goto('/login');
@@ -30,7 +41,9 @@ test('login page offers Steam-only sign-in and reports startup errors', async ({
 		page.getByRole('link', { name: /continue browsing without signing in/i })
 	).toHaveAttribute('href', '/games');
 	await page.getByRole('button', { name: 'Sign in through Steam' }).click();
-	await expect(page.getByRole('alert')).toContainText('Steam sign-in could not start');
+	await expect(page).toHaveURL('https://steamcommunity.com/openid/login?openid.mode=checkid_setup');
+	await expect(page.getByRole('heading', { name: 'Mock Steam OpenID' })).toBeVisible();
+	expect(loginRequests).toBe(1);
 });
 
 test('public policy pages are available and robots lists the sitemap', async ({ page }) => {
