@@ -52,9 +52,10 @@ jobs:
       - run: python scripts/verify_database_setup.py
         env:
           DATABASE_SETUP_SNAPSHOT: ${{ runner.temp }}/tuxgg-database-permissions.json
+      - run: pnpm db:test:prepare
+      - run: python scripts/export_ci_test_database_urls.py
       - run: pnpm db:migrate
-        env:
-          MIGRATION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tuxgg_test
+      - run: pnpm db:test:prepare
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm check
@@ -64,6 +65,8 @@ jobs:
           AUTH_INTEGRATION_TESTS: '1'
           NODE_ENV: production
           BETTER_AUTH_URL: https://localhost:5173
+          PUBLIC_SITE_URL: https://localhost:5173
+          STEAM_API_KEY: ci-mocked-steam-api-key
       - run: python -m pytest -q importer/tests
       - run: python -m pytest -q tests
       - run: pnpm db:test:seed-e2e

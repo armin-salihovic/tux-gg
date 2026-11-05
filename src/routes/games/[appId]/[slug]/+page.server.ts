@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { PageServerLoad } from './$types';
 import { getGameById, getGameReportFilters, getGameReports } from '#lib/server/db/queries.js';
 import { absoluteUrl, plainDescription } from '#lib/server/seo.js';
+import { logDatabaseFailure } from '#lib/server/database-errors.js';
+import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
 
 const pageSchema = z.coerce.number().int().min(1).max(100_000).catch(1);
 const dateSchema = z
@@ -35,12 +37,13 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 		['gpu', 'distribution', 'proton', 'verdict', 'since', 'until'].some((key) =>
 			url.searchParams.has(key)
 		) || page > 1;
-	setHeaders({ 'cache-control': 'public, max-age=30, stale-while-revalidate=120' });
+	setHeaders({ 'cache-control': PRIVATE_NO_STORE_CACHE_CONTROL });
 
 	let game;
 	try {
 		game = await getGameById(params.appId);
 	} catch {
+		logDatabaseFailure('game detail query');
 		return {
 			available: false,
 			appId: params.appId,
@@ -73,7 +76,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 			getGameReportFilters(params.appId)
 		]);
 	} catch {
-		// Keep the game page useful when report queries are temporarily unavailable.
+		logDatabaseFailure('game report queries');
 	}
 	const canonical = absoluteUrl(`/games/${game.appId}/${game.slug}`);
 	const description = plainDescription(
@@ -96,7 +99,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 		},
 		filtered,
 		canonical,
-		ogImage: absoluteUrl('/og-default.svg'),
+		ogImage: absoluteUrl('/og-default.png'),
 		description
 	};
 };

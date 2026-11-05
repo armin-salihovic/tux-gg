@@ -60,22 +60,31 @@ test('game pages render canonical Steam artwork and match sitemap indexability',
 	);
 	await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
 		'content',
-		'http://localhost:5173/og-default.svg'
+		'http://localhost:5173/og-default.png'
 	);
 	await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute(
 		'content',
-		'http://localhost:5173/og-default.svg'
+		'http://localhost:5173/og-default.png'
 	);
 	await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
 		'content',
 		'summary_large_image'
 	);
+	await expect(page.locator('meta[property="og:image:type"]')).toHaveAttribute(
+		'content',
+		'image/png'
+	);
+	await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute('content', '1200');
+	await expect(page.locator('meta[property="og:image:height"]')).toHaveAttribute('content', '630');
 	expect(await page.locator('meta[property="og:image"]').getAttribute('content')).not.toContain(
 		'steamstatic.com'
 	);
-	const socialImage = await page.request.get('/og-default.svg');
+	const socialImage = await page.request.get('/og-default.png');
 	expect(socialImage.status()).toBe(200);
-	expect(socialImage.headers()['content-type']).toContain('image/svg+xml');
+	expect(socialImage.headers()['content-type']).toContain('image/png');
+	const socialImageBytes = await socialImage.body();
+	expect(socialImageBytes.readUInt32BE(16)).toBe(1200);
+	expect(socialImageBytes.readUInt32BE(20)).toBe(630);
 	await expect(
 		page.locator('img[src*="shared.fastly.steamstatic.com"][src*="/440/header.jpg"]')
 	).toHaveCount(1);

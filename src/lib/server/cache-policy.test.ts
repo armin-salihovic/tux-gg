@@ -1,19 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import {
-	applyAuthenticatedCachePolicy,
-	AUTHENTICATED_CACHE_CONTROL,
+	applyResponseCachePolicy,
+	PRIVATE_NO_STORE_CACHE_CONTROL,
 	isStaticAssetPath
 } from './cache-policy.js';
 
-describe('authenticated response cache policy', () => {
+describe('response cache policy', () => {
 	it('prevents shared and browser caching of authenticated HTML', () => {
 		const response = new Response('<html>account</html>', {
-			headers: { 'cache-control': 'public, max-age=30, stale-while-revalidate=120' }
+			headers: {
+				'content-type': 'text/html; charset=utf-8',
+				'cache-control': 'public, max-age=30, stale-while-revalidate=120'
+			}
 		});
 
-		applyAuthenticatedCachePolicy(response, true, '/games');
+		applyResponseCachePolicy(response, true, '/games');
 
-		expect(response.headers.get('cache-control')).toBe(AUTHENTICATED_CACHE_CONTROL);
+		expect(response.headers.get('cache-control')).toBe(PRIVATE_NO_STORE_CACHE_CONTROL);
+	});
+
+	it('does not cache anonymous dynamic HTML during the MVP', () => {
+		const response = new Response('<html>public catalog</html>', {
+			headers: {
+				'content-type': 'text/html; charset=utf-8',
+				'cache-control': 'public, max-age=30'
+			}
+		});
+
+		applyResponseCachePolicy(response, false, '/games');
+
+		expect(response.headers.get('cache-control')).toBe(PRIVATE_NO_STORE_CACHE_CONTROL);
 	});
 
 	it('keeps public anonymous response policy intact', () => {
@@ -21,7 +37,7 @@ describe('authenticated response cache policy', () => {
 			headers: { 'cache-control': 'public, max-age=30' }
 		});
 
-		applyAuthenticatedCachePolicy(response, false, '/games');
+		applyResponseCachePolicy(response, false, '/api/catalog.json');
 
 		expect(response.headers.get('cache-control')).toBe('public, max-age=30');
 	});
@@ -37,7 +53,7 @@ describe('authenticated response cache policy', () => {
 				headers: { 'cache-control': 'public, max-age=31536000, immutable' }
 			});
 
-			applyAuthenticatedCachePolicy(response, true, pathname);
+			applyResponseCachePolicy(response, true, pathname);
 
 			expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
 			expect(isStaticAssetPath(pathname)).toBe(true);
@@ -46,7 +62,7 @@ describe('authenticated response cache policy', () => {
 
 	it('keeps file-like personalized routes private', () => {
 		const response = new Response('private avatar');
-		applyAuthenticatedCachePolicy(response, true, '/users/alex/avatar.png');
-		expect(response.headers.get('cache-control')).toBe(AUTHENTICATED_CACHE_CONTROL);
+		applyResponseCachePolicy(response, true, '/users/alex/avatar.png');
+		expect(response.headers.get('cache-control')).toBe(PRIVATE_NO_STORE_CACHE_CONTROL);
 	});
 });

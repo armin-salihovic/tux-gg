@@ -1,4 +1,4 @@
-export const AUTHENTICATED_CACHE_CONTROL = 'private, no-store';
+export const PRIVATE_NO_STORE_CACHE_CONTROL = 'private, no-store';
 
 export function isStaticAssetPath(pathname: string): boolean {
 	return (
@@ -9,13 +9,14 @@ export function isStaticAssetPath(pathname: string): boolean {
 	);
 }
 
-export function applyAuthenticatedCachePolicy(
+export function applyResponseCachePolicy(
 	response: Response,
 	authenticated: boolean,
 	pathname: string
 ): Response {
-	if (authenticated && !isStaticAssetPath(pathname)) {
-		response.headers.set('cache-control', AUTHENTICATED_CACHE_CONTROL);
+	const isDynamicHtml = response.headers.get('content-type')?.toLowerCase().startsWith('text/html');
+	if ((authenticated || isDynamicHtml) && !isStaticAssetPath(pathname)) {
+		response.headers.set('cache-control', PRIVATE_NO_STORE_CACHE_CONTROL);
 	}
 	return response;
 }

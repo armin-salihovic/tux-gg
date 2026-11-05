@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { PageServerLoad } from './$types';
 import { getCatalog, type CatalogSort } from '#lib/server/db/queries.js';
 import { absoluteUrl } from '#lib/server/seo.js';
+import { logDatabaseFailure } from '#lib/server/database-errors.js';
+import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
 
 const tierSchema = z.enum(['platinum', 'gold', 'silver', 'bronze', 'borked', 'unknown']);
 const sortSchema = z.enum(['title', 'reports', 'recent', 'tier']);
@@ -16,7 +18,7 @@ export const load: PageServerLoad = async ({ url, setHeaders }) => {
 	const tier = tierResult.success ? tierResult.data : undefined;
 	const sort: CatalogSort = sortResult.success ? sortResult.data : 'title';
 	const filtered = Boolean(q || tier || sort !== 'title' || page > 1);
-	setHeaders({ 'cache-control': 'public, max-age=30, stale-while-revalidate=120' });
+	setHeaders({ 'cache-control': PRIVATE_NO_STORE_CACHE_CONTROL });
 	if (url.searchParams.has('page') && page === 1 && url.searchParams.get('page') !== '1') {
 		// Invalid pages are treated as page one without reflecting arbitrary input into SQL.
 	}
@@ -32,6 +34,7 @@ export const load: PageServerLoad = async ({ url, setHeaders }) => {
 			canonical: absoluteUrl('/games')
 		};
 	} catch {
+		logDatabaseFailure('game catalog query');
 		return {
 			available: false,
 			q,

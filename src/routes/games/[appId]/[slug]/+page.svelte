@@ -60,11 +60,15 @@
 		<meta property="og:description" content={data.description} />
 		<meta property="og:url" content={data.canonical} />
 		<meta property="og:image" content={data.ogImage} />
+		<meta property="og:image:type" content="image/png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
 		<meta property="og:image:alt" content="TuxGG Linux and Steam Deck game compatibility" />
 		<meta name="twitter:title" content={`${data.game.title} Linux Compatibility | TuxGG`} />
 		<meta name="twitter:description" content={data.description} />
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:image" content={data.ogImage} />
+		<meta name="twitter:image:alt" content="TuxGG Linux and Steam Deck game compatibility" />
 		<!-- prettier-ignore -->
 		<script type="application/ld+json">
 {@html jsonLd}

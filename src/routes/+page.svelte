@@ -30,6 +30,10 @@
 	/>
 	<meta property="og:url" content={data.canonical} />
 	<meta property="og:image" content={data.ogImage} />
+	<meta property="og:image:alt" content="TuxGG Linux and Steam Deck compatibility" />
+	<meta property="og:image:type" content="image/png" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
 	<meta name="twitter:title" content="Linux Game Compatibility & Reports | TuxGG" />
 	<meta
 		name="twitter:description"
@@ -37,6 +41,7 @@
 	/>
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:image" content={data.ogImage} />
+	<meta name="twitter:image:alt" content="TuxGG Linux and Steam Deck compatibility" />
 </svelte:head>
 
 <section class="container-shell pt-12 sm:pt-20">
@@ -104,8 +109,7 @@
 		<div
 			class="rounded-2xl border border-amber-300/20 bg-amber-300/[0.06] px-5 py-4 text-sm leading-6 text-amber-100"
 		>
-			The catalog database is not available yet. Configure PostgreSQL, apply the migrations, and
-			import the ProtonDB snapshots to show live game data.
+			Catalog data is temporarily unavailable. Please try again in a moment.
 		</div>
 	</section>
 {/if}

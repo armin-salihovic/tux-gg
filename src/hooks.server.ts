@@ -2,7 +2,7 @@ import { building } from '$app/env';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import type { Handle } from '@sveltejs/kit/hooks';
 import { getAuth, isAuthConfigured } from '#lib/server/auth.js';
-import { applyAuthenticatedCachePolicy } from '#lib/server/cache-policy.js';
+import { applyResponseCachePolicy } from '#lib/server/cache-policy.js';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = null;
@@ -22,7 +22,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 				Response.json({ error: 'Sign-in is temporarily unavailable.' }, { status: 503 })
 			);
 		}
-		return secure(applyAuthenticatedCachePolicy(await resolve(event), false, event.url.pathname));
+		return secure(applyResponseCachePolicy(await resolve(event), false, event.url.pathname));
 	}
 
 	const auth = getAuth();
@@ -53,7 +53,5 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 	const response = await svelteKitHandler({ event, resolve, auth, building });
-	return secure(
-		applyAuthenticatedCachePolicy(response, Boolean(event.locals.user), event.url.pathname)
-	);
+	return secure(applyResponseCachePolicy(response, Boolean(event.locals.user), event.url.pathname));
 };

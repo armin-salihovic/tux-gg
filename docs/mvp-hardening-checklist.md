@@ -4,7 +4,7 @@ This checklist tracks the implementation request in the TuxGG workspace. “Impl
 
 ## Stage 1 — Correctness and security
 
-- [x] Force authenticated dynamic HTML to `private, no-store`; retain anonymous page and static asset caching policies.
+- [x] Use `private, no-store` for dynamic MVP HTML and preserve static asset caching.
 - [x] Pass an explicit runtime environment allowlist to the Compose app; keep PostgreSQL administration and migration URLs host-side.
 - [x] Bind the host-published app port to loopback and document host-proxy and container-proxy arrangements.
 - [x] Load local `.env` for Python importer commands without replacing shell-provided values or printing connection secrets.

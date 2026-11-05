@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { RequestEvent } from '@sveltejs/kit';
 import { getAuth } from '#lib/server/auth.js';
 import { canPublishReports } from '#lib/server/authz.js';
@@ -11,6 +11,7 @@ import { STEAM_OPENID_NAMESPACE, STEAM_OPENID_URL } from './steam-openid.js';
 const enabled = process.env.AUTH_INTEGRATION_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL;
 const baseURL = process.env.BETTER_AUTH_URL ?? 'https://localhost:5173';
+const siteURL = process.env.PUBLIC_SITE_URL ?? 'https://localhost:5173';
 const runId = `tuxgg-steam-test-${Date.now()}`;
 const steamIdBlock = Math.floor(Math.random() * 10_000);
 const steamIds = [0, 1, 2, 3].map(
@@ -21,10 +22,9 @@ const validAssertions = new Map<string, Record<string, string>>();
 const originalFetch = globalThis.fetch;
 let rejectNextVerification = false;
 let steamUnavailable = false;
+let steamProfileUnavailable = false;
 let auth: ReturnType<typeof getAuth>;
-let databaseVerified = false;
 let firstUserId: string | undefined;
-let conflictUserId: string | undefined;
 
 function setCookieHeaders(response: Response): string[] {
 	return response.headers.getSetCookie?.() ?? [response.headers.get('set-cookie') ?? ''];
@@ -65,6 +65,10 @@ async function beginLogin() {
 	expect(authorizationURL.searchParams.get('openid.mode')).toBe('checkid_setup');
 	const returnTo = authorizationURL.searchParams.get('openid.return_to');
 	if (!returnTo) throw new Error('Steam OpenID request did not include a return URL.');
+	const callback = new URL(returnTo);
+	expect(callback.origin).toBe(new URL(siteURL).origin);
+	expect(callback.pathname).toBe('/api/auth/steam/callback');
+	expect(authorizationURL.searchParams.get('openid.realm')).toBe(`${new URL(siteURL).origin}/`);
 	return { response, authorizationURL, returnTo, cookies: cookiePairs(response) };
 }
 
@@ -97,7 +101,7 @@ function makeCallback(
 		'openid.signed': 'op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle',
 		'openid.sig': signature
 	};
-	validAssertions.set(signature, fields);
+	if (options.signature === undefined) validAssertions.set(signature, fields);
 	const callback = new URL(flow.returnTo);
 	for (const [key, value] of Object.entries(fields)) callback.searchParams.set(key, value);
 	return callback;
@@ -120,11 +124,23 @@ async function finishLogin(
 	} = {},
 	cookies = flow.cookies
 ) {
+	return finishCallback(startAssertion(flow, options), cookies);
+}
+
+async function finishCallback(callback: URL, cookies: string) {
 	return auth.handler(
-		new Request(startAssertion(flow, options), {
+		new Request(callback, {
 			headers: cookies ? { cookie: cookies } : {}
 		})
 	);
+}
+
+async function expectNoSteamAccount(steamId: string) {
+	const accounts = await getDb()
+		.select({ id: authAccount.id })
+		.from(authAccount)
+		.where(eq(authAccount.accountId, steamId));
+	expect(accounts).toHaveLength(0);
 }
 
 async function getSession(cookie: string) {
@@ -154,8 +170,11 @@ function installSteamMocks() {
 				const signature = body.get('openid.sig') ?? '';
 				const expected = validAssertions.get(signature);
 				const signedFields = body.get('openid.signed')?.split(',') ?? [];
+				const expectedSignedFields = expected?.['openid.signed']?.split(',') ?? [];
 				const matchesSignedAssertion =
 					expected !== undefined &&
+					signedFields.length === expectedSignedFields.length &&
+					signedFields.every((field, index) => field === expectedSignedFields[index]) &&
 					signedFields.every(
 						(field) => body.get(`openid.${field}`) === expected[`openid.${field}`]
 					);
@@ -167,6 +186,8 @@ function installSteamMocks() {
 				);
 			}
 			if (url.hostname === 'api.steampowered.com') {
+				if (steamProfileUnavailable)
+					return new Response('Steam profile unavailable', { status: 503 });
 				return Response.json({ response: { players: [] } });
 			}
 			throw new Error(
@@ -178,6 +199,9 @@ function installSteamMocks() {
 
 describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', () => {
 	beforeAll(async () => {
+		if (!process.env.STEAM_API_KEY) {
+			throw new Error('Auth integration tests require a non-secret STEAM_API_KEY test value.');
+		}
 		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'tuxgg_test') {
 			throw new Error('Auth integration tests require DATABASE_URL to target tuxgg_test.');
 		}
@@ -192,33 +216,32 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		if (marker.rows[0]?.marker !== 'tuxgg_disposable_test_database_v1') {
 			throw new Error('Auth integration tests require the disposable database marker.');
 		}
-		databaseVerified = true;
+		const permissions = await pool.query(
+			'SELECT current_user AS role, ' +
+				"has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read_games, " +
+				"has_table_privilege(current_user, 'public.reports', 'SELECT') AS can_read_reports, " +
+				"has_table_privilege(current_user, 'public.reports', 'INSERT') AS can_write_reports, " +
+				"has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE') AS can_update_summaries"
+		);
+		expect(permissions.rows[0]).toEqual({
+			role: 'tuxgg_web',
+			can_read_games: true,
+			can_read_reports: true,
+			can_write_reports: false,
+			can_update_summaries: false
+		});
+		await pool.query('SELECT app_id FROM public.games LIMIT 0');
+		await pool.query('SELECT app_id FROM public.reports LIMIT 0');
+		await pool.query('SELECT app_id FROM public.compatibility_summaries LIMIT 0');
 		auth = getAuth();
 		installSteamMocks();
 	});
 
 	afterAll(async () => {
 		vi.stubGlobal('fetch', originalFetch);
-		try {
-			const accounts =
-				enabled && databaseVerified
-					? await getDb()
-							.select({ userId: authAccount.userId })
-							.from(authAccount)
-							.where(
-								and(eq(authAccount.providerId, 'steam'), inArray(authAccount.accountId, steamIds))
-							)
-					: [];
-			const testUserIds = accounts.map((account) => account.userId);
-			if (conflictUserId) testUserIds.push(conflictUserId);
-			if (testUserIds.length) {
-				await getDb()
-					.delete(authUser)
-					.where(inArray(authUser.id, [...new Set(testUserIds)]));
-			}
-		} finally {
-			await closeDatabase();
-		}
+		// The suite runs as tuxgg_web, which intentionally cannot delete users. Its randomized
+		// identities remain isolated in the disposable tuxgg_test database.
+		await closeDatabase();
 	});
 
 	it('creates a Steam-only account, a Better Auth session, and a private unverified placeholder email', async () => {
@@ -288,11 +311,9 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		const steamId = steamIds[2]!;
 		const email = `steam-${steamId}@steam.invalid`;
 		const username = `${runId.slice(-12)}-old`;
-		const [user] = await getDb()
+		await getDb()
 			.insert(authUser)
-			.values({ id: `${runId}-old`, name: 'Old account', email, username })
-			.returning({ id: authUser.id });
-		conflictUserId = user!.id;
+			.values({ id: `${runId}-old`, name: 'Old account', email, username });
 		const flow = await beginLogin();
 		const response = await finishLogin(flow, { steamId });
 		expect(response.status).toBe(302);
@@ -310,11 +331,30 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		const forged = await finishLogin(flow, {
 			steamId: validButForgedId,
 			claimedId: `https://steamcommunity.com/openid/id/${validButForgedId}`,
-			identity: `https://steamcommunity.com/openid/id/${validButForgedId}`
+			identity: `https://steamcommunity.com/openid/id/${validButForgedId}`,
+			signature: 'aW52YWxpZC1zaWduYXR1cmU='
 		});
 		expect(forged.status).toBe(302);
 		expect(forged.headers.get('location')).toContain('steam_verification_failed');
 		expect(sessionCookie(forged)).toBe('');
+		await expectNoSteamAccount(validButForgedId);
+
+		const tamperedFlow = await beginLogin();
+		const tamperedIdentity = '76561198999999998';
+		const tamperedCallback = makeCallback(tamperedFlow);
+		tamperedCallback.searchParams.set(
+			'openid.claimed_id',
+			`https://steamcommunity.com/openid/id/${tamperedIdentity}`
+		);
+		tamperedCallback.searchParams.set(
+			'openid.identity',
+			`https://steamcommunity.com/openid/id/${tamperedIdentity}`
+		);
+		const tampered = await finishCallback(tamperedCallback, tamperedFlow.cookies);
+		expect(tampered.status).toBe(302);
+		expect(tampered.headers.get('location')).toContain('steam_verification_failed');
+		expect(sessionCookie(tampered)).toBe('');
+		await expectNoSteamAccount(tamperedIdentity);
 
 		const malformedFlow = await beginLogin();
 		const malformed = await finishLogin(malformedFlow, {
@@ -322,12 +362,40 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		});
 		expect(malformed.status).toBe(302);
 		expect(malformed.headers.get('location')).toContain('steam_verification_failed');
+		await expectNoSteamAccount(validButForgedId);
+	});
+
+	it('rejects an unexpected Steam OpenID provider without creating an account or session', async () => {
+		const flow = await beginLogin();
+		const unexpectedProviderId = '76561198999999997';
+		const callback = makeCallback(flow, { steamId: unexpectedProviderId });
+		callback.searchParams.set('openid.op_endpoint', 'https://attacker.invalid/openid/login');
+		const response = await finishCallback(callback, flow.cookies);
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toContain('steam_verification_failed');
+		expect(sessionCookie(response)).toBe('');
+		await expectNoSteamAccount(unexpectedProviderId);
 	});
 
 	it('rejects an incorrect callback URL before sending the assertion to Steam', async () => {
 		const flow = await beginLogin();
-		const response = await finishLogin(flow, { returnTo: 'https://attacker.invalid/callback' });
+		const invalidCallbackId = '76561198999999996';
+		const response = await finishLogin(flow, {
+			steamId: invalidCallbackId,
+			returnTo: 'https://attacker.invalid/callback'
+		});
 		expect(response.headers.get('location')).toContain('steam_verification_failed');
+		expect(sessionCookie(response)).toBe('');
+		await expectNoSteamAccount(invalidCallbackId);
+
+		const wrongOriginFlow = await beginLogin();
+		const wrongOriginId = '76561198999999995';
+		const wrongOriginCallback = makeCallback(wrongOriginFlow, { steamId: wrongOriginId });
+		wrongOriginCallback.hostname = 'attacker.invalid';
+		const wrongOriginResponse = await finishCallback(wrongOriginCallback, wrongOriginFlow.cookies);
+		expect(wrongOriginResponse.headers.get('location')).toContain('steam_state_invalid');
+		expect(sessionCookie(wrongOriginResponse)).toBe('');
+		await expectNoSteamAccount(wrongOriginId);
 	});
 
 	it('binds each login to the browser and rejects expired or replayed state', async () => {
@@ -403,6 +471,28 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		expect(response.status).toBe(302);
 		expect(response.headers.get('location')).toContain('steam_verification_failed');
 		expect(sessionCookie(response)).toBe('');
+	});
+
+	it('allows login when optional Steam profile enrichment fails', async () => {
+		const steamId = '76561198999999994';
+		const flow = await beginLogin();
+		steamProfileUnavailable = true;
+		let response: Response;
+		try {
+			response = await finishLogin(flow, { steamId });
+		} finally {
+			steamProfileUnavailable = false;
+		}
+
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toBe(`${siteURL}/settings`);
+		const session = await getSession(sessionCookie(response));
+		expect(session?.user?.name).toBe(`Steam player ${steamId.slice(-6)}`);
+		const accounts = await getDb()
+			.select({ providerId: authAccount.providerId, accountId: authAccount.accountId })
+			.from(authAccount)
+			.where(eq(authAccount.accountId, steamId));
+		expect(accounts).toEqual([{ providerId: 'steam', accountId: steamId }]);
 	});
 
 	it('supports profile updates and keeps publishing disabled', async () => {

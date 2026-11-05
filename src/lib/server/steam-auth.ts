@@ -25,21 +25,54 @@ function loginErrorURL(origin: string, code: string): string {
 	return url.toString();
 }
 
-function getOrigin(baseURL: string): string {
-	const url = new URL(baseURL);
-	if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
-		throw new Error('Better Auth must use HTTPS outside local development.');
-	}
-	if (url.pathname !== '/' || url.username || url.password || url.search || url.hash) {
-		throw new Error('BETTER_AUTH_URL must be an origin URL without a path or query parameters.');
-	}
-	return url.origin;
-}
-
 function authPath(ctx: Parameters<typeof handleOAuthUserInfo>[0]): string {
 	const basePath = ctx.context.options.basePath ?? '/api/auth';
-	const normalized = `/${basePath.split('/').filter(Boolean).join('/')}`;
-	return normalized === '/' ? '' : normalized;
+	const parsed = new URL(basePath, 'http://localhost');
+	if (
+		!basePath.startsWith('/') ||
+		parsed.origin !== 'http://localhost' ||
+		parsed.search ||
+		parsed.hash ||
+		parsed.pathname.split('/').some((segment) => segment === '.' || segment === '..')
+	) {
+		throw new Error('Better Auth has an invalid authentication base path.');
+	}
+	return parsed.pathname.replace(/\/+$/, '');
+}
+
+export function getTrustedSiteOrigin(
+	siteURL: string,
+	internalBaseURL: string,
+	configuredAuthPath: string
+): string {
+	let site: URL;
+	let internal: URL;
+	try {
+		site = new URL(siteURL);
+		internal = new URL(internalBaseURL);
+	} catch {
+		throw new Error('PUBLIC_SITE_URL and Better Auth base URL must be valid absolute URLs.');
+	}
+	const localHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+	if (site.protocol !== 'https:' && !(site.protocol === 'http:' && localHosts.has(site.hostname))) {
+		throw new Error('PUBLIC_SITE_URL must use HTTPS outside localhost development.');
+	}
+	if (
+		site.pathname !== '/' ||
+		site.username ||
+		site.password ||
+		site.search ||
+		site.hash ||
+		internal.origin !== site.origin ||
+		internal.pathname.replace(/\/+$/, '') !== configuredAuthPath ||
+		internal.username ||
+		internal.password ||
+		internal.search ||
+		internal.hash
+	) {
+		throw new Error('The configured site origin and Better Auth base URL do not match.');
+	}
+	return site.origin;
 }
 
 function usernameCandidates(profileName: string, steamId: string): string[] {
@@ -141,7 +174,7 @@ async function createSteamSession(
 	return null;
 }
 
-export function steamOpenID(apiKey?: string): BetterAuthPlugin {
+export function steamOpenID(apiKey: string | undefined, siteURL: string): BetterAuthPlugin {
 	return {
 		id: 'steam-openid',
 		endpoints: {
@@ -155,7 +188,8 @@ export function steamOpenID(apiKey?: string): BetterAuthPlugin {
 					metadata: { openapi: { description: 'Start Steam OpenID sign-in.' } }
 				},
 				async (ctx) => {
-					const origin = getOrigin(ctx.context.baseURL);
+					const basePath = authPath(ctx);
+					const origin = getTrustedSiteOrigin(siteURL, ctx.context.baseURL, basePath);
 					const realm = `${origin}/`;
 					const flowId = randomBytes(16).toString('hex');
 					const generated = await generateGenericState(
@@ -187,8 +221,9 @@ export function steamOpenID(apiKey?: string): BetterAuthPlugin {
 					metadata: { ...HIDE_METADATA, openapi: { description: 'Steam OpenID callback.' } }
 				},
 				async (ctx) => {
-					const origin = getOrigin(ctx.context.baseURL);
-					const callback = new URL(`${authPath(ctx)}/steam/callback`, origin);
+					const basePath = authPath(ctx);
+					const origin = getTrustedSiteOrigin(siteURL, ctx.context.baseURL, basePath);
+					const callback = new URL(`${basePath}/steam/callback`, origin);
 					const currentURL = new URL(ctx.request.url);
 					const params = currentURL.searchParams;
 					const flowValues = params.getAll('flow');

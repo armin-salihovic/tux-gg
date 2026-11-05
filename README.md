@@ -29,27 +29,33 @@ Importer integration tests truncate importer tables, so run them only against a 
 ```sh
 export TEST_DATABASE_URL=postgresql://postgres:local-password@localhost:5432/tuxgg_test
 pnpm db:test:prepare
-MIGRATION_DATABASE_URL="$TEST_DATABASE_URL" pnpm db:migrate
+# Point these to the existing role credentials, keeping their passwords unchanged.
+export TEST_WEB_DATABASE_URL=postgresql://tuxgg_web:existing-web-password@localhost:5432/tuxgg_test
+export TEST_MIGRATOR_DATABASE_URL=postgresql://tuxgg_migrator:existing-migration-password@localhost:5432/tuxgg_test
+MIGRATION_DATABASE_URL="$TEST_MIGRATOR_DATABASE_URL" pnpm db:migrate
 python -m pytest -q importer/tests
 python -m pytest -q tests
 pnpm db:test:seed-e2e
-DATABASE_URL="$TEST_DATABASE_URL" pnpm test:e2e
+DATABASE_URL="$TEST_WEB_DATABASE_URL" pnpm test:e2e
 ```
 
-`pnpm db:test:prepare` creates only `tuxgg_test` through `PGADMIN_URL` from the shell or private `.env`. The importer tests reject `tuxgg`, `postgres`, any other database name, and unmarked databases before destructive cleanup. `importer/tests` contains database-free importer unit tests; `tests` contains the PostgreSQL recovery tests. CI uses its own ephemeral PostgreSQL service and seeds browser fixtures (Team Fortress 2, Dota 2, and Counter-Strike 2) without reading local archives.
+`pnpm db:test:prepare` creates or verifies only the marked `tuxgg_test` database through `PGADMIN_URL`. Once the three runtime roles exist, it applies the production grant map to that disposable database. Do not run `pnpm db:setup` automatically against a developer database. The importer tests use `TEST_DATABASE_URL` and reject `tuxgg`, `postgres`, other database names, and unmarked databases before destructive cleanup. `importer/tests` contains database-free importer unit tests; `tests` contains PostgreSQL recovery tests. CI uses its own ephemeral PostgreSQL service and seeds browser fixtures (Team Fortress 2, Dota 2, and Counter-Strike 2) without reading local archives.
 
-The mocked Steam OpenID lifecycle test can run against the same marked disposable database. It does not need a Steam Web API key or live Steam credentials:
+The mocked Steam OpenID lifecycle test must use the `tuxgg_web` role on the marked disposable database. Run migrations with `tuxgg_migrator` and keep `TEST_DATABASE_URL` on the admin connection only for importer fixtures. The runtime URL must not use PostgreSQL administrator credentials. Set `STEAM_API_KEY` to a non-secret placeholder for the mocked profile-enrichment failure case; Steam requests remain intercepted by the test:
 
 ```sh
-DATABASE_URL="$TEST_DATABASE_URL" \
+DATABASE_URL="$TEST_WEB_DATABASE_URL" \
+MIGRATION_DATABASE_URL="$TEST_MIGRATOR_DATABASE_URL" \
 AUTH_INTEGRATION_TESTS=1 \
 NODE_ENV=production \
 BETTER_AUTH_URL=https://localhost:5173 \
+PUBLIC_SITE_URL=https://localhost:5173 \
+STEAM_API_KEY=ci-mocked-steam-api-key \
 BETTER_AUTH_SECRET=ci-only-test-secret-for-mocked-steam \
 pnpm test:auth-integration
 ```
 
-CI runs this test in production-cookie mode. A live Steam OpenID login requires a reachable origin but no client ID or secret. The callback is `${BETTER_AUTH_URL}/api/auth/steam/callback`; the integration validates its realm and return URL against that configured origin.
+Before running the command, point `DATABASE_URL` to the existing `tuxgg_web` credential on `tuxgg_test` and `MIGRATION_DATABASE_URL` to the existing `tuxgg_migrator` credential on that same database. Keep credentials unchanged. CI runs the suite with the restricted web role and production-cookie settings. Steam OpenID derives its realm from `PUBLIC_SITE_URL` and its callback path from Better Auth's configured base path. The site URL must be an origin without a path and must match Better Auth's origin. A live Steam login requires a reachable origin but no client ID or secret.
 
 Steam is the only sign-in provider. Steam OpenID supplies a verified SteamID64 but no email address. TuxGG stores that identity in the Better Auth `account` table and uses an unverified internal placeholder email that is never used for email or account linking. Better Auth manages sessions. A server-side Steam Web API key is optional and used only for profile enrichment; without it, sign-in uses fallback profile details. Native report publishing remains disabled.
 

@@ -7,11 +7,151 @@ import os
 import sys
 from urllib.parse import urlsplit
 
-from setup_database import read_env_file
+from setup_database import _validate_role, read_env_file
 
 EXPECTED_DATABASE = "tuxgg_test"
 MARKER_TABLE = "tuxgg_test_safety_marker"
 MARKER_VALUE = "tuxgg_disposable_test_database_v1"
+WEB_ROLE = "tuxgg_web"
+IMPORTER_ROLE = "tuxgg_importer"
+MIGRATION_ROLE = "tuxgg_migrator"
+ROLES = (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE)
+WEB_PRIVILEGES = {
+    "games": "SELECT",
+    "reports": "SELECT",
+    "import_batches": "SELECT",
+    "compatibility_summaries": "SELECT",
+    "native_reports": "SELECT",
+    "user": "SELECT, INSERT, UPDATE",
+    "session": "SELECT, INSERT, UPDATE, DELETE",
+    "account": "SELECT, INSERT, UPDATE, DELETE",
+    "verification": "SELECT, INSERT, UPDATE, DELETE",
+}
+IMPORTER_PRIVILEGES = {
+    "games": "SELECT, INSERT, UPDATE",
+    "reports": "SELECT, INSERT, UPDATE",
+    "import_batches": "SELECT, INSERT, UPDATE",
+    "compatibility_summaries": "SELECT, INSERT, UPDATE, DELETE",
+}
+
+
+def configure_runtime_roles(admin_url: str, test_url: str) -> None:
+    """Apply the production runtime grant map to the marked disposable database only."""
+    from psycopg import sql
+
+    with psycopg_connect(admin_url) as conn, conn.cursor() as cur:
+        cur.execute("SELECT current_database()")
+        if cur.fetchone()[0] != "postgres":
+            raise RuntimeError("PGADMIN_URL must connect to the postgres maintenance database.")
+        for role in ROLES:
+            cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
+            if cur.fetchone() is None:
+                raise RuntimeError("The web, importer, and migration roles must exist before test setup.")
+            _validate_role(cur, role)
+        for role in ROLES:
+            cur.execute(
+                sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                    sql.Identifier(EXPECTED_DATABASE), sql.Identifier(role)
+                )
+            )
+        cur.execute(
+            sql.SQL("REVOKE CREATE ON DATABASE {} FROM PUBLIC").format(
+                sql.Identifier(EXPECTED_DATABASE)
+            )
+        )
+        cur.execute(
+            sql.SQL("GRANT CREATE ON DATABASE {} TO {}").format(
+                sql.Identifier(EXPECTED_DATABASE), sql.Identifier(MIGRATION_ROLE)
+            )
+        )
+        for role in (WEB_ROLE, IMPORTER_ROLE):
+            cur.execute(
+                sql.SQL("REVOKE CREATE ON DATABASE {} FROM {}").format(
+                    sql.Identifier(EXPECTED_DATABASE), sql.Identifier(role)
+                )
+            )
+
+    with psycopg_connect(test_url) as conn, conn.cursor() as cur:
+        cur.execute("SELECT current_database()")
+        if cur.fetchone()[0] != EXPECTED_DATABASE:
+            raise RuntimeError("Refusing role changes outside the dedicated tuxgg_test database.")
+        cur.execute(
+            f"SELECT marker FROM public.{MARKER_TABLE} WHERE id = 1"
+        )
+        marker = cur.fetchone()
+        if marker is None or marker[0] != MARKER_VALUE:
+            raise RuntimeError("Refusing role changes without the disposable database marker.")
+        cur.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+        cur.execute(sql.SQL("ALTER SCHEMA public OWNER TO {}").format(sql.Identifier(MIGRATION_ROLE)))
+        for role in ROLES:
+            cur.execute(
+                sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role))
+            )
+            if role != MIGRATION_ROLE:
+                cur.execute(
+                    sql.SQL("REVOKE CREATE ON SCHEMA public FROM {}").format(sql.Identifier(role))
+                )
+        cur.execute(
+            sql.SQL("GRANT CREATE ON SCHEMA public TO {}").format(sql.Identifier(MIGRATION_ROLE))
+        )
+        cur.execute(
+            sql.SQL("GRANT SELECT ON TABLE public.{} TO {}").format(
+                sql.Identifier(MARKER_TABLE), sql.Identifier(WEB_ROLE)
+            )
+        )
+        cur.execute(
+            sql.SQL("REVOKE ALL PRIVILEGES ON TABLE public.{} FROM PUBLIC").format(
+                sql.Identifier(MARKER_TABLE)
+            )
+        )
+
+        for table in (*WEB_PRIVILEGES, *IMPORTER_PRIVILEGES):
+            cur.execute("SELECT to_regclass(%s)", (f"public.{table}",))
+            if cur.fetchone()[0] is None:
+                continue
+            cur.execute(
+                sql.SQL("ALTER TABLE public.{} OWNER TO {}").format(
+                    sql.Identifier(table), sql.Identifier(MIGRATION_ROLE)
+                )
+            )
+            for role in ROLES:
+                cur.execute(
+                    sql.SQL("REVOKE ALL PRIVILEGES ON TABLE public.{} FROM {}").format(
+                        sql.Identifier(table), sql.Identifier(role)
+                    )
+                )
+            if table in WEB_PRIVILEGES:
+                cur.execute(
+                    sql.SQL("GRANT " + WEB_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(
+                        sql.Identifier(table), sql.Identifier(WEB_ROLE)
+                    )
+                )
+            if table in IMPORTER_PRIVILEGES:
+                cur.execute(
+                    sql.SQL("GRANT " + IMPORTER_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(
+                        sql.Identifier(table), sql.Identifier(IMPORTER_ROLE)
+                    )
+                )
+
+        for sequence in ("reports_id_seq", "import_batches_id_seq"):
+            cur.execute("SELECT to_regclass(%s)", (f"public.{sequence}",))
+            if cur.fetchone()[0] is not None:
+                cur.execute(
+                    sql.SQL("ALTER SEQUENCE public.{} OWNER TO {}").format(
+                        sql.Identifier(sequence), sql.Identifier(MIGRATION_ROLE)
+                    )
+                )
+                cur.execute(
+                    sql.SQL("GRANT USAGE, SELECT ON SEQUENCE public.{} TO {}").format(
+                        sql.Identifier(sequence), sql.Identifier(IMPORTER_ROLE)
+                    )
+                )
+
+
+def psycopg_connect(url: str):
+    import psycopg
+
+    return psycopg.connect(url, autocommit=True)
 
 
 def main() -> int:
@@ -72,6 +212,13 @@ def main() -> int:
                 "ON CONFLICT (id) DO NOTHING",
                 (MARKER_VALUE,),
             )
+        with psycopg.connect(admin_url) as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM pg_roles WHERE rolname = ANY(%s)", (list(ROLES),))
+            roles_present = cur.fetchone()[0]
+        if roles_present == len(ROLES):
+            configure_runtime_roles(admin_url, url)
+        elif roles_present:
+            raise RuntimeError("Only some TuxGG runtime roles exist; refusing partial test setup.")
         print("Verified and marked the dedicated tuxgg_test database.")
         return 0
     except Exception as exc:
