@@ -234,9 +234,27 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			can_read_auth_users: true,
 			can_lock_auth_users: true
 		});
-		// Better Auth inserts account/session rows with foreign keys to user. PostgreSQL checks
-		// those references with SELECT ... FOR KEY SHARE, which requires SELECT and UPDATE.
-		await pool.query('SELECT id FROM public.user LIMIT 0 FOR KEY SHARE');
+		// Exercise the actual FK check Better Auth hits when inserting an account for a new user.
+		// Roll the probe back so the auth suite only leaves its intentionally isolated test data.
+		const privilegeProbe = await pool.connect();
+		try {
+			await privilegeProbe.query('BEGIN');
+			const probeId = `steam-permission-probe-${Date.now()}`;
+			await privilegeProbe.query(
+				'INSERT INTO public.user (id, name, email, username) VALUES ($1, $2, $3, $4)',
+				[probeId, 'Permission probe', `${probeId}@steam.invalid`, `probe-${Date.now()}`]
+			);
+			await privilegeProbe.query(
+				'INSERT INTO public.account (id, account_id, provider_id, user_id) VALUES ($1, $2, $3, $4)',
+				[`${probeId}-account`, `${probeId}-steam`, 'steam-permission-probe', probeId]
+			);
+			await privilegeProbe.query('SELECT id FROM public.user WHERE id = $1 FOR KEY SHARE', [
+				probeId
+			]);
+		} finally {
+			await privilegeProbe.query('ROLLBACK');
+			privilegeProbe.release();
+		}
 		await pool.query('SELECT app_id FROM public.games LIMIT 0');
 		await pool.query('SELECT app_id FROM public.reports LIMIT 0');
 		await pool.query('SELECT app_id FROM public.compatibility_summaries LIMIT 0');
