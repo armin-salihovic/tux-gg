@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import { nativeReportSchema } from '#lib/native-report-validation.js';
+import { safeDeviceReturnPath } from '#lib/device-return-path.js';
 import { canSubmitReports } from '#lib/server/authz.js';
 import { getDb } from '#lib/server/db/db.js';
 import { games } from '#lib/server/db/schema.js';
@@ -14,7 +15,11 @@ import {
 	releaseNativeReportSubmission,
 	reserveNativeReportSubmission
 } from '#lib/server/native-report-rate-limit.js';
-import { insertNativeReport } from '#lib/server/native-reports.js';
+import {
+	insertNativeReportForDevice,
+	SelectedDeviceNotFoundError
+} from '#lib/server/native-reports.js';
+import { listUserDevices } from '#lib/server/user-devices.js';
 
 const appIdPattern = /^\d{1,20}$/;
 
@@ -26,18 +31,11 @@ function returnedValues(formData: FormData) {
 	const limits: Record<string, number> = {
 		id: 36,
 		verdict: 16,
-		platform: 32,
+		deviceId: 36,
 		content: 5001,
 		protonVersion: 101,
 		protonVariant: 101,
 		customProtonVersion: 101,
-		distribution: 121,
-		kernel: 121,
-		cpu: 161,
-		gpu: 161,
-		gpuVendor: 32,
-		graphicsDriver: 121,
-		ram: 81,
 		launchOptions: 1001,
 		performanceNotes: 2001,
 		knownIssues: 2001
@@ -66,7 +64,18 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
 	if (!(await canSubmitReports(locals.user.id))) {
 		error(403, 'A Steam-linked account is required to submit compatibility reports.');
 	}
-	return { game, submissionId: randomUUID() };
+	let devices;
+	try {
+		devices = await listUserDevices(locals.user.id);
+	} catch {
+		error(503, 'Your saved devices are temporarily unavailable. Please try again.');
+	}
+	return {
+		game,
+		submissionId: randomUUID(),
+		devices,
+		returnTo: safeDeviceReturnPath(url.pathname) ?? `/games/${game.appId}/${game.slug}/report/new`
+	};
 };
 
 export const actions: Actions = {
@@ -114,29 +123,31 @@ export const actions: Actions = {
 
 		const report = parsed.data;
 		try {
-			await insertNativeReport({
-				id: report.id,
-				appId: game.appId,
-				authorId: locals.user.id,
-				verdict: report.verdict,
-				platform: report.platform,
-				protonVersion: report.protonVersion,
-				protonVariant: report.protonVariant,
-				customProtonVersion: report.customProtonVersion,
-				distribution: report.distribution,
-				kernel: report.kernel,
-				cpu: report.cpu,
-				gpu: report.gpu,
-				gpuVendor: report.gpuVendor,
-				graphicsDriver: report.graphicsDriver,
-				ram: report.ram,
-				launchOptions: report.launchOptions,
-				performanceNotes: report.performanceNotes,
-				knownIssues: report.knownIssues,
-				content: report.content
-			});
+			await insertNativeReportForDevice(
+				{
+					id: report.id,
+					appId: game.appId,
+					authorId: locals.user.id,
+					verdict: report.verdict,
+					platform: 'linux_desktop',
+					protonVersion: report.protonVersion,
+					protonVariant: report.protonVariant,
+					customProtonVersion: report.customProtonVersion,
+					launchOptions: report.launchOptions,
+					performanceNotes: report.performanceNotes,
+					knownIssues: report.knownIssues,
+					content: report.content
+				},
+				report.deviceId
+			);
 		} catch (cause) {
 			releaseNativeReportSubmission(locals.user.id, reservation);
+			if (cause instanceof SelectedDeviceNotFoundError) {
+				return fail(400, {
+					values,
+					formError: 'Choose one of your saved devices before submitting the report.'
+				});
+			}
 			if (
 				typeof cause === 'object' &&
 				cause !== null &&

@@ -81,6 +81,9 @@
 								: 'Linux desktop'}
 						</p>
 						<p class="mt-1 text-xs text-muted">Submitted {dateFormat.format(report.createdAt)}</p>
+						{#if report.deviceNameSnapshot}<p class="mt-1 text-xs text-muted">
+								Device: {report.deviceNameSnapshot}
+							</p>{/if}
 					</div>
 					<span
 						class="w-fit rounded-full border px-3 py-1.5 text-xs font-semibold {report.moderationState ===

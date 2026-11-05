@@ -6,6 +6,8 @@ import { getMyNativeReports, getPublishedNativeReports } from '#lib/server/db/qu
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authUser, games, nativeReports } from '#lib/server/db/schema.js';
 import { insertNativeReport } from './native-reports.js';
+import { insertNativeReportForDevice, SelectedDeviceNotFoundError } from './native-reports.js';
+import { createUserDevice, deleteUserDevice, updateUserDevice } from './user-devices.js';
 
 const enabled = process.env.NATIVE_REPORT_INTEGRATION_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL;
@@ -80,6 +82,99 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 		await expect(
 			insertNativeReport({ ...submission, content: 'Duplicate browser request.' })
 		).rejects.toMatchObject({ code: '23505' });
+
+		const deviceInput = {
+			name: 'Main Gaming PC',
+			deviceType: 'linux_desktop' as const,
+			cpu: 'AMD Ryzen 7 9800X3D',
+			gpu: 'AMD Radeon RX 9070 XT',
+			gpuVendor: 'AMD' as const,
+			ram: '30.5 GB',
+			distribution: 'CachyOS',
+			kernel: '7.3',
+			graphicsDriver: 'Mesa 26.2.6-arch3.1',
+			gpuDriverDetail: 'radeonsi'
+		};
+		const deviceId = await createUserDevice(userId, deviceInput);
+		const snapshotReportId = randomUUID();
+		await insertNativeReportForDevice(
+			{
+				...submission,
+				id: snapshotReportId,
+				content: 'Hardware is copied from the selected device.'
+			},
+			deviceId
+		);
+		const [snapshot] = await getDb()
+			.select({
+				platform: nativeReports.platform,
+				deviceId: nativeReports.deviceId,
+				deviceName: nativeReports.deviceNameSnapshot,
+				cpu: nativeReports.cpu,
+				gpu: nativeReports.gpu,
+				ram: nativeReports.ram,
+				graphicsDriver: nativeReports.graphicsDriver,
+				gpuDriverDetail: nativeReports.gpuDriverDetail
+			})
+			.from(nativeReports)
+			.where(eq(nativeReports.id, snapshotReportId));
+		expect(snapshot).toEqual({
+			platform: 'linux_desktop',
+			deviceId,
+			deviceName: 'Main Gaming PC',
+			cpu: 'AMD Ryzen 7 9800X3D',
+			gpu: 'AMD Radeon RX 9070 XT',
+			ram: '30.5 GB',
+			graphicsDriver: 'Mesa 26.2.6-arch3.1',
+			gpuDriverDetail: 'radeonsi'
+		});
+		await updateUserDevice(userId, deviceId, {
+			...deviceInput,
+			name: 'Upgraded PC',
+			gpu: 'AMD Radeon RX 10070 XT'
+		});
+		expect(
+			(
+				await getDb()
+					.select({ gpu: nativeReports.gpu, deviceName: nativeReports.deviceNameSnapshot })
+					.from(nativeReports)
+					.where(eq(nativeReports.id, snapshotReportId))
+			)[0]
+		).toEqual({ gpu: 'AMD Radeon RX 9070 XT', deviceName: 'Main Gaming PC' });
+
+		const otherUserId = `other-report-${randomUUID()}`;
+		const otherSuffix = randomUUID();
+		await getDb()
+			.insert(authUser)
+			.values({
+				id: otherUserId,
+				name: 'Other device owner',
+				email: `${otherSuffix}@steam.invalid`,
+				username: `other-${otherSuffix.slice(0, 18)}`
+			});
+		const otherDeviceId = await createUserDevice(otherUserId, {
+			...deviceInput,
+			name: 'Private PC'
+		});
+		await expect(
+			insertNativeReportForDevice(
+				{ ...submission, id: randomUUID(), content: 'Cannot use another account device.' },
+				otherDeviceId
+			)
+		).rejects.toBeInstanceOf(SelectedDeviceNotFoundError);
+		await deleteUserDevice(userId, deviceId);
+		expect(
+			(
+				await getDb()
+					.select({
+						deviceId: nativeReports.deviceId,
+						deviceName: nativeReports.deviceNameSnapshot,
+						gpu: nativeReports.gpu
+					})
+					.from(nativeReports)
+					.where(eq(nativeReports.id, snapshotReportId))
+			)[0]
+		).toEqual({ deviceId: null, deviceName: 'Main Gaming PC', gpu: 'AMD Radeon RX 9070 XT' });
 
 		await expect(
 			pool.query(

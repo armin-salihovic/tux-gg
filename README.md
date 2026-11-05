@@ -61,6 +61,8 @@ Steam is the only sign-in provider. Steam OpenID supplies a verified SteamID64 b
 
 Signed-in Steam users can select **Write a Report** on any game page and submit a compatibility verdict, platform, experience, and optional system details. Each report is stored in `native_reports` with `pending` moderation state and appears in `/my-reports` for its author. Only published TuxGG reports appear in the separate **TuxGG Community Reports** section on game pages; imported ProtonDB reports and their scoring remain unchanged.
 
+Steam users can save multiple computers and Steam Decks under **Settings → Devices**. Paste Steam **Help → System Information** or choose a `.txt` file to detect hardware locally, then review and edit the saved values. Reports select one of the user's private devices, and the server stores a hardware snapshot so later edits or device deletion do not change historical reports. See [docs/devices.md](docs/devices.md) for parser, privacy, migration, permissions, and testing details.
+
 No database migration is needed for Steam sign-in. Existing user, account, session, and verification tables are reused; old account rows are left untouched and are not linked automatically. Set `PUBLIC_SITE_URL` to the canonical public origin and `PUBLIC_CONTACT_EMAIL` to a monitored address before public deployment.
 
 ## Useful commands

@@ -407,7 +407,9 @@ export async function getPublishedNativeReports(appId: string, requestedPage = 1
 			gpu: nativeReports.gpu,
 			gpuVendor: nativeReports.gpuVendor,
 			graphicsDriver: nativeReports.graphicsDriver,
+			gpuDriverDetail: nativeReports.gpuDriverDetail,
 			ram: nativeReports.ram,
+			deviceNameSnapshot: nativeReports.deviceNameSnapshot,
 			launchOptions: nativeReports.launchOptions,
 			performanceNotes: nativeReports.performanceNotes,
 			knownIssues: nativeReports.knownIssues,
@@ -447,6 +449,7 @@ export async function getMyNativeReports(userId: string, requestedPage = 1) {
 			artworkUrl: games.artworkUrl,
 			verdict: nativeReports.verdict,
 			platform: nativeReports.platform,
+			deviceNameSnapshot: nativeReports.deviceNameSnapshot,
 			content: nativeReports.content,
 			moderationState: nativeReports.moderationState,
 			createdAt: nativeReports.createdAt

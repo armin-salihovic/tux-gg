@@ -182,11 +182,12 @@
 									</div>
 									{#if report.publishedAt}<time class="text-xs text-muted" datetime={report.publishedAt.toISOString()}>{dateFormat.format(report.publishedAt)}</time>{/if}
 								</div>
-								{#if report.protonVersion || report.protonVariant || report.customProtonVersion || report.distribution || report.kernel || report.cpu || report.gpu || report.gpuVendor || report.graphicsDriver || report.ram || report.launchOptions}
+								{#if report.deviceNameSnapshot}<h3 class="mt-4 border-t border-white/[0.06] pt-4 text-sm font-bold text-white">{report.deviceNameSnapshot}</h3>{/if}
+								{#if report.protonVersion || report.protonVariant || report.customProtonVersion || report.distribution || report.kernel || report.cpu || report.gpu || report.gpuVendor || report.graphicsDriver || report.gpuDriverDetail || report.ram || report.launchOptions}
 									<dl class="mt-4 grid gap-x-5 gap-y-2 border-t border-white/[0.06] pt-4 sm:grid-cols-2">
 										{#if report.protonVersion || report.protonVariant || report.customProtonVersion}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Proton</dt><dd class="mt-0.5 text-sm text-slate-200">{[report.protonVariant, report.protonVersion, report.customProtonVersion].filter(Boolean).join(' · ')}</dd></div>{/if}
 										{#if report.distribution}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Distribution</dt><dd class="mt-0.5 text-sm text-slate-200">{report.distribution}</dd></div>{/if}
-										{#if report.gpu || report.gpuVendor || report.graphicsDriver}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Graphics</dt><dd class="mt-0.5 text-sm text-slate-200">{[report.gpuVendor, report.gpu, report.graphicsDriver].filter(Boolean).join(' · ')}</dd></div>{/if}
+										{#if report.gpu || report.gpuVendor || report.graphicsDriver || report.gpuDriverDetail}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Graphics</dt><dd class="mt-0.5 text-sm text-slate-200">{[report.gpuVendor, report.gpu, report.graphicsDriver, report.gpuDriverDetail].filter(Boolean).join(' · ')}</dd></div>{/if}
 										{#if report.cpu || report.kernel || report.ram}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">System</dt><dd class="mt-0.5 text-sm text-slate-200">{[report.cpu, report.kernel ? `Kernel ${report.kernel}` : null, report.ram].filter(Boolean).join(' · ')}</dd></div>{/if}
 										{#if report.launchOptions}<div class="sm:col-span-2"><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Launch options</dt><dd class="mt-0.5 break-words font-mono text-xs text-mint">{report.launchOptions}</dd></div>{/if}
 									</dl>

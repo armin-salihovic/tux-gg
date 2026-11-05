@@ -35,6 +35,9 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 
 		const gamePath = '/games/440/team-fortress-2';
 		const formPath = `${gamePath}/report/new`;
+		await page.goto('/settings/devices');
+		await expect(page).toHaveURL('/login');
+		await expect(page.getByRole('heading', { name: 'Sign in through Steam' })).toBeVisible();
 		await page.goto(gamePath);
 		const writeReport = page.getByRole('link', { name: 'Write a Report' });
 		await expect(writeReport).toHaveAttribute('href', formPath);
@@ -73,9 +76,79 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			}
 		]);
 		await page.goto(formPath);
+		await expect(page.getByText("You haven't added any devices yet.")).toBeVisible();
+		await page.getByRole('link', { name: 'Add Device' }).click();
+		await expect(page).toHaveURL(new RegExp('/settings/devices/new\\?returnTo='));
+		await page.getByLabel('Device name').fill('Main Gaming PC');
+		await page.getByLabel('Steam System Information').fill(`Computer Information:
+Manufacturer: Gigabyte Technology Co., Ltd.
+Model: B850M DS3H
+Form Factor: Desktop
+Processor Information:
+CPU Vendor: AuthenticAMD
+CPU Brand: AMD Ryzen 7 9800X3D 8-Core Processor
+Operating System:
+CachyOS (64 bit)
+Kernel Name: Linux
+Kernel Version: 7.3
+Video Card:
+Driver: AMD AMD Radeon RX 9070 XT (radeonsi, gfx1201, ACO, DRM 3.64)
+Driver Version: 4.6 (Compatibility Profile) Mesa 26.2.6-arch3.1
+Memory:
+RAM: 31188 Mb`);
+		await page.getByRole('button', { name: 'Detect System Information' }).click();
+		await expect(page.getByLabel('CPU', { exact: true })).toHaveValue('AMD Ryzen 7 9800X3D');
+		await expect(page.getByLabel('GPU', { exact: true })).toHaveValue('AMD Radeon RX 9070 XT');
+		await expect(page.getByLabel('RAM', { exact: true })).toHaveValue('30.5 GB');
+		await expect(page.getByLabel('Linux distribution or OS')).toHaveValue('CachyOS');
+		await expect(page.getByLabel('Kernel version')).toHaveValue('7.3');
+		await expect(page.getByLabel('Graphics driver')).toHaveValue('Mesa 26.2.6-arch3.1');
+		await page.getByRole('button', { name: 'Save device' }).click();
+		await expect(page).toHaveURL(formPath);
+		const mainDeviceResult = await web.query(
+			"SELECT id, device_type, cpu, gpu, gpu_vendor, ram, distribution, kernel, graphics_driver FROM public.user_devices WHERE user_id = $1 AND name = 'Main Gaming PC'",
+			[userId]
+		);
+		const mainDevice = mainDeviceResult.rows[0];
+		expect(mainDevice).toMatchObject({
+			device_type: 'linux_desktop',
+			cpu: 'AMD Ryzen 7 9800X3D',
+			gpu: 'AMD Radeon RX 9070 XT',
+			gpu_vendor: 'AMD',
+			ram: '30.5 GB',
+			distribution: 'CachyOS',
+			kernel: '7.3',
+			graphics_driver: 'Mesa 26.2.6-arch3.1'
+		});
+
+		await page.goto('/settings/devices/new');
+		await page.getByLabel('Device name').fill('Steam Deck OLED');
+		await page.getByLabel('Upload Steam System Information text file').setInputFiles({
+			name: 'steam-deck.txt',
+			mimeType: 'text/plain',
+			buffer: Buffer.from(
+				'Computer Information:\nManufacturer: Valve\nModel: Galileo\nOperating System:\nSteamOS Holo (64 bit)\nProcessor Information:\nCPU Brand: AMD Custom APU 0406\nVideo Card:\nDriver: AMD AMD Custom GPU 0406 (RADV VANGOGH)\nMemory:\nRAM: 16384 Mb'
+			)
+		});
+		await page.getByRole('button', { name: 'Detect System Information' }).click();
+		await expect(page.getByLabel('Device type')).toHaveValue('steam_deck');
+		await page.getByRole('button', { name: 'Save device' }).click();
+		await expect(page).toHaveURL('/settings/devices?saved=1');
+		const deckDeviceResult = await web.query(
+			"SELECT id FROM public.user_devices WHERE user_id = $1 AND name = 'Steam Deck OLED'",
+			[userId]
+		);
+		const deckDeviceId = deckDeviceResult.rows[0]?.id as string;
+		await page.goto('/settings/devices');
+		const deckCard = page.locator('article').filter({ hasText: 'Steam Deck OLED' });
+		await deckCard.getByRole('button', { name: 'Set default' }).click();
+		await expect(page.getByRole('status')).toContainText('saved');
+
+		await page.goto(formPath);
 		await expect(page.getByRole('heading', { name: 'Write a report' })).toBeVisible();
 		await page.getByLabel('Compatibility verdict').selectOption('yes');
-		await page.getByLabel('Platform').selectOption('steam_deck');
+		await expect(page.getByLabel('Which device did you play on?')).toHaveValue(deckDeviceId);
+		await page.getByLabel('Which device did you play on?').selectOption(mainDevice.id);
 		await page.getByLabel('Your experience').fill('short');
 		await page.locator('form').evaluate((form) => {
 			(form as HTMLFormElement).noValidate = true;
@@ -93,7 +166,10 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await page.locator('form').evaluate((form) => {
 			for (const [name, value] of [
 				['authorId', 'forged-other-user'],
-				['moderationState', 'published']
+				['moderationState', 'published'],
+				['cpu', 'Forged CPU'],
+				['gpu', 'Forged GPU'],
+				['ram', '999 GB']
 			]) {
 				const field = document.createElement('input');
 				field.type = 'hidden';
@@ -111,14 +187,27 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			gamePath
 		);
 		const stored = await web.query(
-			'SELECT author_id, moderation_state FROM public.native_reports WHERE id = $1',
+			'SELECT author_id, moderation_state, platform, device_id, device_name_snapshot, cpu, gpu, gpu_vendor, ram, distribution, kernel, graphics_driver FROM public.native_reports WHERE id = $1',
 			[reportId]
 		);
-		expect(stored.rows[0]).toEqual({ author_id: userId, moderation_state: 'pending' });
+		expect(stored.rows[0]).toEqual({
+			author_id: userId,
+			moderation_state: 'pending',
+			platform: 'linux_desktop',
+			device_id: mainDevice.id,
+			device_name_snapshot: 'Main Gaming PC',
+			cpu: 'AMD Ryzen 7 9800X3D',
+			gpu: 'AMD Radeon RX 9070 XT',
+			gpu_vendor: 'AMD',
+			ram: '30.5 GB',
+			distribution: 'CachyOS',
+			kernel: '7.3',
+			graphics_driver: 'Mesa 26.2.6-arch3.1'
+		});
 
 		await page.goto(formPath);
 		await page.getByLabel('Compatibility verdict').selectOption('yes');
-		await page.getByLabel('Platform').selectOption('steam_deck');
+		await page.getByLabel('Which device did you play on?').selectOption(mainDevice.id);
 		await page.getByLabel('Your experience').fill('This exact form submission was already saved.');
 		await page.locator('input[name="id"]').evaluate((input, existingId) => {
 			(input as HTMLInputElement).value = existingId;
@@ -158,6 +247,33 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		);
 		await expect(page.getByText(unsafeLookingText, { exact: true })).toBeVisible();
 		await expect(page.locator('img[src="x"]')).toHaveCount(0);
+		await expect(page.getByRole('heading', { name: 'Main Gaming PC' })).toBeVisible();
+		await expect(page.getByText('AMD Radeon RX 9070 XT', { exact: false })).toBeVisible();
+
+		await page.goto(`/settings/devices/${mainDevice.id}/edit`);
+		await page.getByLabel('GPU', { exact: true }).fill('AMD Radeon RX 10070 XT');
+		await page.getByRole('button', { name: 'Save device' }).click();
+		await expect(page).toHaveURL('/settings/devices?saved=1');
+		await page.goto(gamePath);
+		await expect(page.getByText('AMD Radeon RX 9070 XT', { exact: false })).toBeVisible();
+		await expect(page.getByText('AMD Radeon RX 10070 XT', { exact: false })).toHaveCount(0);
+
+		page.once('dialog', (dialog) => dialog.accept());
+		const mainCard = page.locator('article').filter({ hasText: 'Main Gaming PC' });
+		await mainCard.getByRole('button', { name: 'Delete' }).click();
+		await expect(page).toHaveURL('/settings/devices?saved=1');
+		const preserved = await web.query(
+			'SELECT device_id, device_name_snapshot, gpu FROM public.native_reports WHERE id = $1',
+			[reportId]
+		);
+		expect(preserved.rows[0]).toEqual({
+			device_id: null,
+			device_name_snapshot: 'Main Gaming PC',
+			gpu: 'AMD Radeon RX 9070 XT'
+		});
+		await page.goto(gamePath);
+		await expect(page.getByRole('heading', { name: 'Main Gaming PC' })).toBeVisible();
+		await expect(page.getByText('AMD Radeon RX 9070 XT', { exact: false })).toBeVisible();
 	} finally {
 		await web.end();
 	}

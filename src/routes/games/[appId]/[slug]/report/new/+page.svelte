@@ -11,7 +11,17 @@
 	};
 	let { data, form }: { data: PageData; form?: ReportFormState } = $props();
 	let submitting = $state(false);
-
+	let selectedDeviceId = $state('');
+	$effect(() => {
+		const preferred =
+			form?.values?.deviceId ??
+			data.devices.find((device) => device.isDefault)?.id ??
+			data.devices[0]?.id ??
+			'';
+		if (!data.devices.some((device) => device.id === selectedDeviceId))
+			selectedDeviceId = preferred;
+	});
+	const selectedDevice = $derived(data.devices.find((device) => device.id === selectedDeviceId));
 	const fieldError = (name: string) => form?.errors?.[name]?.[0];
 	const enhanceReport: SubmitFunction = () => {
 		submitting = true;
@@ -54,192 +64,198 @@
 			</div>
 		</div>
 
-		<form method="POST" use:enhance={enhanceReport} class="space-y-7 p-5 sm:p-8">
-			<input type="hidden" name="id" value={form?.values?.id ?? data.submissionId} />
-			{#if form?.formError}
-				<p
-					role="alert"
-					class="rounded-xl border border-rose-200/20 bg-rose-200/[0.06] p-3 text-sm text-rose-100"
-				>
-					{form.formError}
-				</p>
-			{/if}
-
-			<div class="grid gap-5 sm:grid-cols-2">
-				<div>
-					<label for="verdict" class="block text-sm font-semibold text-white"
-						>Compatibility verdict <span class="text-mint">*</span></label
+		{#if data.devices.length === 0}
+			<div class="p-5 sm:p-8">
+				<div class="rounded-2xl border border-mint/20 bg-mint/[0.05] p-5 sm:p-6">
+					<h2 class="font-bold text-white">Add a device to write this report</h2>
+					<p class="mt-2 text-sm leading-6 text-slate-300">
+						You haven't added any devices yet. Add a device to include your system specifications in
+						your compatibility report.
+					</p>
+					<a
+						class="mt-5 inline-flex rounded-xl bg-mint px-4 py-2.5 text-sm font-extrabold text-ink hover:bg-lime"
+						href={`/settings/devices/new?returnTo=${encodeURIComponent(data.returnTo)}`}
+						>Add Device</a
 					>
-					<select
-						id="verdict"
-						name="verdict"
-						required
-						aria-invalid={Boolean(fieldError('verdict'))}
-						class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100"
-					>
-						<option value="">Choose one</option>
-						<option value="yes" selected={form?.values?.verdict === 'yes'}
-							>Yes — the game works</option
-						>
-						<option value="no" selected={form?.values?.verdict === 'no'}
-							>No — the game does not work</option
-						>
-					</select>
-					{#if fieldError('verdict')}<p class="mt-1 text-xs text-rose-200">
-							{fieldError('verdict')}
-						</p>{/if}
-				</div>
-				<div>
-					<label for="platform" class="block text-sm font-semibold text-white"
-						>Platform <span class="text-mint">*</span></label
-					>
-					<select
-						id="platform"
-						name="platform"
-						required
-						aria-invalid={Boolean(fieldError('platform'))}
-						class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100"
-					>
-						<option value="">Choose one</option>
-						<option value="steam_deck" selected={form?.values?.platform === 'steam_deck'}
-							>Steam Deck</option
-						>
-						<option value="linux_desktop" selected={form?.values?.platform === 'linux_desktop'}
-							>Linux desktop</option
-						>
-					</select>
-					{#if fieldError('platform')}<p class="mt-1 text-xs text-rose-200">
-							{fieldError('platform')}
-						</p>{/if}
 				</div>
 			</div>
-
-			<div>
-				<label for="content" class="block text-sm font-semibold text-white"
-					>Your experience <span class="text-mint">*</span></label
-				>
-				<textarea
-					id="content"
-					name="content"
-					required
-					minlength="10"
-					maxlength={nativeReportLimits.content}
-					rows="6"
-					aria-invalid={Boolean(fieldError('content'))}
-					class="mt-2 w-full resize-y rounded-xl border border-line bg-panel px-3 py-3 text-sm leading-6 text-slate-100 placeholder:text-slate-500"
-					placeholder="Describe performance, crashes, graphical problems, controller support, workarounds, or anything other Linux players should know."
-					>{form?.values?.content ?? ''}</textarea
-				>
-				{#if fieldError('content')}<p class="mt-1 text-xs text-rose-200">
-						{fieldError('content')}
+		{:else}
+			<form method="POST" use:enhance={enhanceReport} class="space-y-7 p-5 sm:p-8">
+				<input type="hidden" name="id" value={form?.values?.id ?? data.submissionId} />
+				{#if form?.formError}<p
+						role="alert"
+						class="rounded-xl border border-rose-200/20 bg-rose-200/[0.06] p-3 text-sm text-rose-100"
+					>
+						{form.formError}
 					</p>{/if}
-			</div>
 
-			<fieldset class="rounded-2xl border border-white/[0.07] p-4 sm:p-5">
-				<legend class="px-2 text-sm font-bold text-white">Optional system details</legend>
-				<div class="grid gap-4 sm:grid-cols-2">
-					{#each [['protonVersion', 'Proton version', 'e.g. 9.0-4'], ['protonVariant', 'Proton variant', 'Valve Proton, Experimental, GE-Proton'], ['customProtonVersion', 'Custom Proton version', 'e.g. GE-Proton 9-20'], ['distribution', 'Linux distribution', 'e.g. Arch Linux, Ubuntu 24.04'], ['kernel', 'Kernel version', 'e.g. 6.8.0'], ['cpu', 'CPU', 'e.g. AMD Ryzen 7 7840U'], ['gpu', 'GPU', 'e.g. Radeon 780M'], ['graphicsDriver', 'Graphics driver', 'e.g. Mesa 24.1'], ['ram', 'RAM', 'e.g. 16 GB']] as [name, label, placeholder]}
-						<div>
-							<label for={name} class="block text-xs font-semibold text-slate-300">{label}</label>
-							<input
-								id={name}
-								{name}
-								maxlength={nativeReportLimits[name as keyof typeof nativeReportLimits]}
-								value={form?.values?.[name] ?? ''}
-								{placeholder}
-								class="mt-1.5 w-full rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500"
-							/>
-							{#if fieldError(name)}<p class="mt-1 text-xs text-rose-200">
-									{fieldError(name)}
-								</p>{/if}
-						</div>
-					{/each}
+				<div class="grid gap-5 sm:grid-cols-2">
 					<div>
-						<label for="gpuVendor" class="block text-xs font-semibold text-slate-300"
-							>GPU vendor</label
+						<label for="verdict" class="block text-sm font-semibold text-white"
+							>Compatibility verdict <span class="text-mint">*</span></label
 						>
 						<select
-							id="gpuVendor"
-							name="gpuVendor"
-							class="mt-1.5 w-full rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-slate-100"
+							id="verdict"
+							name="verdict"
+							required
+							aria-invalid={Boolean(fieldError('verdict'))}
+							class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100"
 						>
-							<option value="">Choose vendor</option>
-							{#each ['NVIDIA', 'AMD', 'Intel', 'Apple', 'Multiple', 'Unknown'] as vendor}<option
-									value={vendor}
-									selected={form?.values?.gpuVendor === vendor}>{vendor}</option
-								>{/each}
+							<option value="">Choose one</option><option
+								value="yes"
+								selected={form?.values?.verdict === 'yes'}>Yes — the game works</option
+							><option value="no" selected={form?.values?.verdict === 'no'}
+								>No — the game does not work</option
+							>
 						</select>
-						{#if fieldError('gpuVendor')}<p class="mt-1 text-xs text-rose-200">
-								{fieldError('gpuVendor')}
+						{#if fieldError('verdict')}<p class="mt-1 text-xs text-rose-200">
+								{fieldError('verdict')}
 							</p>{/if}
 					</div>
 					<div>
-						<label for="launchOptions" class="block text-xs font-semibold text-slate-300"
-							>Steam launch options</label
+						<label for="deviceId" class="block text-sm font-semibold text-white"
+							>Which device did you play on? <span class="text-mint">*</span></label
 						>
-						<input
-							id="launchOptions"
-							name="launchOptions"
-							maxlength={nativeReportLimits.launchOptions}
-							value={form?.values?.launchOptions ?? ''}
-							placeholder="e.g. PROTON_LOG=1 %command%"
-							class="mt-1.5 w-full rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500"
-						/>
-						{#if fieldError('launchOptions')}<p class="mt-1 text-xs text-rose-200">
-								{fieldError('launchOptions')}
+						<select
+							id="deviceId"
+							name="deviceId"
+							bind:value={selectedDeviceId}
+							required
+							aria-invalid={Boolean(fieldError('deviceId'))}
+							class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100"
+						>
+							{#each data.devices as device (device.id)}<option value={device.id}
+									>{device.name}{device.gpu ? ` — ${device.gpu}` : ''}</option
+								>{/each}
+						</select>
+						{#if fieldError('deviceId')}<p class="mt-1 text-xs text-rose-200">
+								{fieldError('deviceId')}
 							</p>{/if}
 					</div>
 				</div>
-			</fieldset>
+				{#if selectedDevice}
+					<div class="-mt-4 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4">
+						<p class="text-xs font-semibold text-slate-300">
+							{selectedDevice.name} · {selectedDevice.deviceType === 'steam_deck'
+								? 'Steam Deck'
+								: 'Linux desktop'}
+						</p>
+						<p class="mt-1 text-xs leading-5 text-muted">
+							{[
+								selectedDevice.cpu,
+								selectedDevice.gpu,
+								selectedDevice.ram,
+								selectedDevice.distribution,
+								selectedDevice.kernel ? `Kernel ${selectedDevice.kernel}` : null,
+								selectedDevice.graphicsDriver
+							]
+								.filter(Boolean)
+								.join(' · ') || 'No hardware details are available for this device yet.'}
+						</p>
+					</div>
+				{/if}
 
-			<div class="grid gap-4 sm:grid-cols-2">
 				<div>
-					<label for="performanceNotes" class="block text-sm font-semibold text-white"
-						>Performance notes <span class="font-normal text-muted">(optional)</span></label
+					<label for="content" class="block text-sm font-semibold text-white"
+						>Your experience <span class="text-mint">*</span></label
 					>
 					<textarea
-						id="performanceNotes"
-						name="performanceNotes"
-						maxlength={nativeReportLimits.performanceNotes}
-						rows="3"
-						class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100 placeholder:text-slate-500"
-						placeholder="Frame rate, resolution, battery life, or settings used."
-						>{form?.values?.performanceNotes ?? ''}</textarea
+						id="content"
+						name="content"
+						required
+						minlength="10"
+						maxlength={nativeReportLimits.content}
+						rows="6"
+						aria-invalid={Boolean(fieldError('content'))}
+						class="mt-2 w-full resize-y rounded-xl border border-line bg-panel px-3 py-3 text-sm leading-6 text-slate-100 placeholder:text-slate-500"
+						placeholder="Describe performance, crashes, graphical problems, controller support, workarounds, or anything other Linux players should know."
+						>{form?.values?.content ?? ''}</textarea
 					>
-					{#if fieldError('performanceNotes')}<p class="mt-1 text-xs text-rose-200">
-							{fieldError('performanceNotes')}
+					{#if fieldError('content')}<p class="mt-1 text-xs text-rose-200">
+							{fieldError('content')}
 						</p>{/if}
 				</div>
-				<div>
-					<label for="knownIssues" class="block text-sm font-semibold text-white"
-						>Known issues <span class="font-normal text-muted">(optional)</span></label
-					>
-					<textarea
-						id="knownIssues"
-						name="knownIssues"
-						maxlength={nativeReportLimits.knownIssues}
-						rows="3"
-						class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100 placeholder:text-slate-500"
-						placeholder="Crashes, graphical glitches, or needed workarounds."
-						>{form?.values?.knownIssues ?? ''}</textarea
-					>
-					{#if fieldError('knownIssues')}<p class="mt-1 text-xs text-rose-200">
-							{fieldError('knownIssues')}
-						</p>{/if}
-				</div>
-			</div>
 
-			<p class="text-xs leading-5 text-muted">
-				Reports are private until reviewed. Do not include personal information. Plain text only;
-				HTML is not accepted.
-			</p>
-			<button
-				disabled={submitting}
-				aria-busy={submitting}
-				class="w-full rounded-xl bg-mint px-5 py-3.5 text-sm font-extrabold text-ink transition hover:bg-lime disabled:cursor-wait disabled:opacity-60 sm:w-auto"
-			>
-				{submitting ? 'Submitting…' : 'Submit report'}
-			</button>
-		</form>
+				<fieldset class="rounded-2xl border border-white/[0.07] p-4 sm:p-5">
+					<legend class="px-2 text-sm font-bold text-white">Proton and launch details</legend>
+					<div class="grid gap-4 sm:grid-cols-2">
+						{#each [['protonVersion', 'Proton version', 'e.g. 9.0-4'], ['protonVariant', 'Proton variant', 'Valve Proton, Experimental, GE-Proton'], ['customProtonVersion', 'Custom Proton version', 'e.g. GE-Proton 9-20']] as [name, label, placeholder]}
+							<div>
+								<label for={name} class="block text-xs font-semibold text-slate-300"
+									>{label}<input
+										id={name}
+										{name}
+										maxlength={nativeReportLimits[name as keyof typeof nativeReportLimits]}
+										value={form?.values?.[name] ?? ''}
+										{placeholder}
+										class="mt-1.5 w-full rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500"
+									/></label
+								>{#if fieldError(name)}<p class="mt-1 text-xs text-rose-200">
+										{fieldError(name)}
+									</p>{/if}
+							</div>
+						{/each}
+						<div>
+							<label for="launchOptions" class="block text-xs font-semibold text-slate-300"
+								>Steam launch options<input
+									id="launchOptions"
+									name="launchOptions"
+									maxlength={nativeReportLimits.launchOptions}
+									value={form?.values?.launchOptions ?? ''}
+									placeholder="e.g. PROTON_LOG=1 %command%"
+									class="mt-1.5 w-full rounded-xl border border-line bg-panel px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500"
+								/></label
+							>{#if fieldError('launchOptions')}<p class="mt-1 text-xs text-rose-200">
+									{fieldError('launchOptions')}
+								</p>{/if}
+						</div>
+					</div>
+				</fieldset>
+
+				<div class="grid gap-4 sm:grid-cols-2">
+					<div>
+						<label for="performanceNotes" class="block text-sm font-semibold text-white"
+							>Performance notes <span class="font-normal text-muted">(optional)</span><textarea
+								id="performanceNotes"
+								name="performanceNotes"
+								maxlength={nativeReportLimits.performanceNotes}
+								rows="3"
+								class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100 placeholder:text-slate-500"
+								placeholder="Frame rate, resolution, battery life, or settings used."
+								>{form?.values?.performanceNotes ?? ''}</textarea
+							></label
+						>{#if fieldError('performanceNotes')}<p class="mt-1 text-xs text-rose-200">
+								{fieldError('performanceNotes')}
+							</p>{/if}
+					</div>
+					<div>
+						<label for="knownIssues" class="block text-sm font-semibold text-white"
+							>Known issues <span class="font-normal text-muted">(optional)</span><textarea
+								id="knownIssues"
+								name="knownIssues"
+								maxlength={nativeReportLimits.knownIssues}
+								rows="3"
+								class="mt-2 w-full rounded-xl border border-line bg-panel px-3 py-3 text-sm text-slate-100 placeholder:text-slate-500"
+								placeholder="Crashes, graphical glitches, or needed workarounds."
+								>{form?.values?.knownIssues ?? ''}</textarea
+							></label
+						>{#if fieldError('knownIssues')}<p class="mt-1 text-xs text-rose-200">
+								{fieldError('knownIssues')}
+							</p>{/if}
+					</div>
+				</div>
+
+				<p class="text-xs leading-5 text-muted">
+					Reports are private until reviewed. Do not include personal information. Plain text only;
+					HTML is not accepted.
+				</p>
+				<button
+					disabled={submitting}
+					aria-busy={submitting}
+					class="w-full rounded-xl bg-mint px-5 py-3.5 text-sm font-extrabold text-ink transition hover:bg-lime disabled:cursor-wait disabled:opacity-60 sm:w-auto"
+					>{submitting ? 'Submitting…' : 'Submit report'}</button
+				>
+			</form>
+		{/if}
 	</div>
 </section>

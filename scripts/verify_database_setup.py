@@ -122,6 +122,13 @@ def main() -> int:
                 "has_column_privilege(current_user, 'public.native_reports', 'moderation_state', 'INSERT')": False,
                 "has_table_privilege(current_user, 'public.native_reports', 'UPDATE')": False,
                 "has_table_privilege(current_user, 'public.native_reports', 'DELETE')": False,
+                "has_table_privilege(current_user, 'public.user_devices', 'SELECT')": True,
+                "has_table_privilege(current_user, 'public.user_devices', 'INSERT')": True,
+                "has_table_privilege(current_user, 'public.user_devices', 'UPDATE')": True,
+                "has_table_privilege(current_user, 'public.user_devices', 'DELETE')": True,
+                "has_column_privilege(current_user, 'public.native_reports', 'device_id', 'INSERT')": True,
+                "has_column_privilege(current_user, 'public.native_reports', 'device_name_snapshot', 'INSERT')": True,
+                "has_column_privilege(current_user, 'public.native_reports', 'gpu_driver_detail', 'INSERT')": True,
             },
         )
         assert_runtime_privileges(
@@ -133,6 +140,7 @@ def main() -> int:
                 "has_table_privilege(current_user, 'public.reports', 'UPDATE')": True,
                 "has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE')": True,
                 "has_table_privilege(current_user, 'public.user', 'SELECT')": False,
+                "has_table_privilege(current_user, 'public.user_devices', 'SELECT')": False,
             },
         )
         print("Only TuxGG privileges changed; web and importer grants match their access maps.")

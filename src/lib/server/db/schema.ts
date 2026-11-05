@@ -242,6 +242,40 @@ export const authVerification = pgTable(
 	(table) => [index('verification_identifier_idx').on(table.identifier)]
 );
 
+export const userDevices = pgTable(
+	'user_devices',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => authUser.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		deviceType: text('device_type').notNull(),
+		cpu: text('cpu'),
+		gpu: text('gpu'),
+		gpuVendor: text('gpu_vendor'),
+		ram: text('ram'),
+		distribution: text('distribution'),
+		kernel: text('kernel'),
+		graphicsDriver: text('graphics_driver'),
+		gpuDriverDetail: text('gpu_driver_detail'),
+		isDefault: boolean('is_default').notNull().default(false),
+		createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow()
+	},
+	(table) => [
+		index('user_devices_user_created_idx').on(table.userId, table.createdAt),
+		uniqueIndex('user_devices_one_default_per_user_idx')
+			.on(table.userId)
+			.where(sql`${table.isDefault}`),
+		check('user_devices_type_check', sql`${table.deviceType} in ('linux_desktop', 'steam_deck')`),
+		check(
+			'user_devices_gpu_vendor_check',
+			sql`${table.gpuVendor} is null or ${table.gpuVendor} in ('NVIDIA', 'AMD', 'Intel', 'Apple', 'Multiple', 'Unknown')`
+		)
+	]
+);
+
 export const nativeReports = pgTable(
 	'native_reports',
 	{
@@ -263,7 +297,10 @@ export const nativeReports = pgTable(
 		gpu: text('gpu'),
 		gpuVendor: text('gpu_vendor'),
 		graphicsDriver: text('graphics_driver'),
+		gpuDriverDetail: text('gpu_driver_detail'),
 		ram: text('ram'),
+		deviceId: uuid('device_id').references(() => userDevices.id, { onDelete: 'set null' }),
+		deviceNameSnapshot: text('device_name_snapshot'),
 		launchOptions: text('launch_options'),
 		performanceNotes: text('performance_notes'),
 		knownIssues: text('known_issues'),
@@ -297,5 +334,6 @@ export const schema = {
 	authSession,
 	authAccount,
 	authVerification,
-	nativeReports
+	nativeReports,
+	userDevices
 };

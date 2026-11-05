@@ -29,6 +29,7 @@ TABLES = (
     "account",
     "verification",
     "native_reports",
+    "user_devices",
     "__drizzle_migrations",
 )
 SEQUENCES = ("reports_id_seq", "import_batches_id_seq")
@@ -42,6 +43,7 @@ WEB_PRIVILEGES = {
     "account": "SELECT, INSERT, UPDATE, DELETE",
     "verification": "SELECT, INSERT, UPDATE, DELETE",
     "native_reports": "SELECT",
+    "user_devices": "SELECT, INSERT, UPDATE, DELETE",
 }
 NATIVE_REPORT_INSERT_COLUMNS = (
     "id",
@@ -63,6 +65,9 @@ NATIVE_REPORT_INSERT_COLUMNS = (
     "performance_notes",
     "known_issues",
     "content",
+    "gpu_driver_detail",
+    "device_id",
+    "device_name_snapshot",
 )
 IMPORTER_PRIVILEGES = {
     "games": "SELECT, INSERT, UPDATE",

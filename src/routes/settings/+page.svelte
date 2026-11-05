@@ -16,6 +16,15 @@
 	<p class="mt-2 text-sm text-muted">
 		Your TuxGG username and display name appear on your public profile.
 	</p>
+	<nav class="mt-6 flex flex-wrap gap-2" aria-label="Account settings">
+		<a class="rounded-full bg-mint/10 px-4 py-2 text-sm font-semibold text-mint" href="/settings"
+			>Profile</a
+		>
+		<a
+			class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-slate-200 hover:border-mint/40 hover:text-mint"
+			href="/settings/devices">Devices</a
+		>
+	</nav>
 	{#if data.saved}<div
 			role="status"
 			class="mt-6 rounded-xl border border-mint/20 bg-mint/[0.06] p-4 text-sm text-mint"
