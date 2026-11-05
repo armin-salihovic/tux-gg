@@ -29,6 +29,7 @@ test('login page offers Steam-only sign-in and starts a mocked Steam handoff', a
 		});
 	});
 	await page.goto('/login');
+	await page.waitForLoadState('networkidle');
 	await expect(page.getByRole('heading', { name: 'Sign in through Steam' })).toBeVisible();
 	await expect(
 		page.getByText(
