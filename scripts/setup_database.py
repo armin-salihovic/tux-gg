@@ -238,6 +238,7 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
     roles = [WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE]
     if legacy_exists:
         roles.append(LEGACY_ROLE)
+    revoke_roles = [role for role in roles if role != MIGRATION_ROLE]
     with connect(database_admin_url) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT current_database()")
@@ -280,12 +281,14 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                         )
                     )
 
-            # Clear only grants held by the TuxGG runtime roles, then apply the role-specific access map.
+            # Keep the migration role's owner privileges: PostgreSQL runs foreign-key checks
+            # with the referenced table owner's rights. Revoking the owner's SELECT/UPDATE
+            # privileges breaks Better Auth's account/session references to public.user.
             for table in TABLES:
                 cur.execute("SELECT to_regclass(%s)", (f"public.{table}",))
                 if cur.fetchone()[0] is None:
                     continue
-                for role in roles:
+                for role in revoke_roles:
                     cur.execute(
                         sql.SQL("REVOKE ALL PRIVILEGES ON TABLE public.{} FROM {}").format(
                             sql.Identifier(table), sql.Identifier(role)
@@ -309,7 +312,7 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                 cur.execute("SELECT to_regclass(%s)", (f"public.{sequence}",))
                 if cur.fetchone()[0] is None:
                     continue
-                for role in roles:
+                for role in revoke_roles:
                     cur.execute(
                         sql.SQL("REVOKE ALL PRIVILEGES ON SEQUENCE public.{} FROM {}").format(
                             sql.Identifier(sequence), sql.Identifier(role)

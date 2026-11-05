@@ -114,7 +114,9 @@ def configure_runtime_roles(admin_url: str, test_url: str) -> None:
                     sql.Identifier(table), sql.Identifier(MIGRATION_ROLE)
                 )
             )
-            for role in ROLES:
+            # Keep the migration role's owner privileges. PostgreSQL executes foreign-key
+            # checks with the referenced table owner's rights, including for auth.user.
+            for role in (WEB_ROLE, IMPORTER_ROLE):
                 cur.execute(
                     sql.SQL("REVOKE ALL PRIVILEGES ON TABLE public.{} FROM {}").format(
                         sql.Identifier(table), sql.Identifier(role)

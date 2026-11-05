@@ -93,6 +93,14 @@ def main() -> int:
             )
             if cur.fetchone() != (False, False, True, False, False, True):
                 raise RuntimeError("Unexpected TuxGG schema or migration-role privileges.")
+            cur.execute(
+                "SELECT has_table_privilege('tuxgg_migrator', 'public.user', 'SELECT'), "
+                "has_table_privilege('tuxgg_migrator', 'public.user', 'UPDATE')"
+            )
+            if cur.fetchone() != (True, True):
+                raise RuntimeError(
+                    "The auth table owner must retain SELECT and UPDATE for foreign-key checks."
+                )
             cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'tuxgg'")
             if cur.fetchone()[0] in ("tuxgg_web", "tuxgg_importer", "tuxgg_app"):
                 raise RuntimeError("A runtime role owns the TuxGG database.")
