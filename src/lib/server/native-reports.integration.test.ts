@@ -96,13 +96,13 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 			)
 		).rejects.toMatchObject({ code: '42501' });
 		await expect(
-			getDb()
-				.update(nativeReports)
-				.set({ moderationState: 'published' })
-				.where(eq(nativeReports.id, reportId))
+			pool.query('UPDATE public.native_reports SET moderation_state = $1 WHERE id = $2', [
+				'published',
+				reportId
+			])
 		).rejects.toMatchObject({ code: '42501' });
 		await expect(
-			getDb().delete(nativeReports).where(eq(nativeReports.id, reportId))
+			pool.query('DELETE FROM public.native_reports WHERE id = $1', [reportId])
 		).rejects.toMatchObject({ code: '42501' });
 	});
 

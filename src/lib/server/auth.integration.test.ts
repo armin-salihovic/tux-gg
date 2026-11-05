@@ -299,28 +299,33 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 				'AND attnum > 0 AND NOT attisdropped ORDER BY attnum'
 		);
 		expect(
-			nativeColumnPrivileges.rows.filter((row) => row.can_insert).map((row) => row.attname)
-		).toEqual([
-			'id',
-			'app_id',
-			'author_id',
-			'verdict',
-			'platform',
-			'proton_version',
-			'proton_variant',
-			'custom_proton_version',
-			'distribution',
-			'kernel',
-			'cpu',
-			'gpu',
-			'gpu_vendor',
-			'graphics_driver',
-			'ram',
-			'launch_options',
-			'performance_notes',
-			'known_issues',
-			'content'
-		]);
+			nativeColumnPrivileges.rows
+				.filter((row) => row.can_insert)
+				.map((row) => row.attname)
+				.sort()
+		).toEqual(
+			[
+				'id',
+				'app_id',
+				'author_id',
+				'verdict',
+				'platform',
+				'proton_version',
+				'proton_variant',
+				'custom_proton_version',
+				'distribution',
+				'kernel',
+				'cpu',
+				'gpu',
+				'gpu_vendor',
+				'graphics_driver',
+				'ram',
+				'launch_options',
+				'performance_notes',
+				'known_issues',
+				'content'
+			].sort()
+		);
 		// Exercise the actual FK check Better Auth hits when inserting an account for a new user.
 		// Roll the probe back so the auth suite only leaves its intentionally isolated test data.
 		const privilegeProbe = await pool.connect();
