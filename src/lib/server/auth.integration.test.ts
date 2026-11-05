@@ -221,15 +221,22 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 				"has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read_games, " +
 				"has_table_privilege(current_user, 'public.reports', 'SELECT') AS can_read_reports, " +
 				"has_table_privilege(current_user, 'public.reports', 'INSERT') AS can_write_reports, " +
-				"has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE') AS can_update_summaries"
+				"has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE') AS can_update_summaries, " +
+				"has_table_privilege(current_user, 'public.user', 'SELECT') AS can_read_auth_users, " +
+				"has_table_privilege(current_user, 'public.user', 'UPDATE') AS can_lock_auth_users"
 		);
 		expect(permissions.rows[0]).toEqual({
 			role: 'tuxgg_web',
 			can_read_games: true,
 			can_read_reports: true,
 			can_write_reports: false,
-			can_update_summaries: false
+			can_update_summaries: false,
+			can_read_auth_users: true,
+			can_lock_auth_users: true
 		});
+		// Better Auth inserts account/session rows with foreign keys to user. PostgreSQL checks
+		// those references with SELECT ... FOR KEY SHARE, which requires SELECT and UPDATE.
+		await pool.query('SELECT id FROM public.user LIMIT 0 FOR KEY SHARE');
 		await pool.query('SELECT app_id FROM public.games LIMIT 0');
 		await pool.query('SELECT app_id FROM public.reports LIMIT 0');
 		await pool.query('SELECT app_id FROM public.compatibility_summaries LIMIT 0');
