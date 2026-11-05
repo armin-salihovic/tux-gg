@@ -96,6 +96,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 		},
 		filtered,
 		canonical,
+		ogImage: absoluteUrl('/og-default.svg'),
 		description
 	};
 };

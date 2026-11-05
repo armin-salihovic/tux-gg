@@ -5,7 +5,12 @@ import { absoluteUrl } from '#lib/server/seo.js';
 export const load: PageServerLoad = async ({ setHeaders }) => {
 	setHeaders({ 'cache-control': 'private, max-age=60' });
 	try {
-		return { available: true, ...(await getHomeData()), canonical: absoluteUrl('/') };
+		return {
+			available: true,
+			...(await getHomeData()),
+			canonical: absoluteUrl('/'),
+			ogImage: absoluteUrl('/og-default.svg')
+		};
 	} catch {
 		return {
 			available: false,
@@ -14,7 +19,8 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
 			tiers: {},
 			totalGames: 0,
 			totalReports: 0,
-			canonical: absoluteUrl('/')
+			canonical: absoluteUrl('/'),
+			ogImage: absoluteUrl('/og-default.svg')
 		};
 	}
 };

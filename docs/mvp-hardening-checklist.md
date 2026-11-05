@@ -16,7 +16,7 @@ This checklist tracks the implementation request in the TuxGG workspace. “Impl
 
 - [x] Centralize validated Steam App ID URL construction and trusted existing artwork URL handling.
 - [x] Add shared card/header artwork rendering, native lazy loading, reserved dimensions, bounded fallback attempts, and TuxGG placeholder.
-- [x] Use artwork on cards, the homepage, and game detail heroes; only emit Open Graph image metadata for a trusted stored URL.
+- [x] Use artwork on cards, the homepage, and game detail heroes; use a branded Open Graph image until Steam artwork availability is verified.
 - [x] Verify current Steam CDN URL responses for App IDs 440, 570, and 730; verify the Dota 2 capsule path.
 - [x] Document that public third-party artwork reuse/hotlink rights are not confirmed and require a deployment decision.
 - [ ] Measure Core Web Vitals on a deployed representative dataset.
@@ -37,8 +37,13 @@ This checklist tracks the implementation request in the TuxGG workspace. “Impl
 - [x] Add importer unit and disposable-PostgreSQL recovery tests.
 - [x] Add tests for Steam URL validation, artwork fallback progression, cache policy, indexability, scoring, and Steam Deck value mapping.
 - [x] Add pull request CI for formatting, linting, type checks, unit tests, importer recovery tests, production build, and Playwright with PostgreSQL.
+- [x] Use the pnpm version in `package.json`, keep migrations off the maintenance database, and use a disposable marked `tuxgg_test` database for destructive tests.
+- [x] Verify database setup against a disposable three-database server and keep maintenance/unrelated database ownership and ACLs unchanged.
+- [x] Seed deterministic Steam app fixtures for browser tests; verify image success, 404/network fallbacks, layout dimensions, lazy/eager loading, and branded social metadata.
+- [x] Separate web, importer, and migration roles with table-specific grants and a `tuxgg_app` compatibility transition.
 - [x] Document data licenses, Steam artwork limitations, missing operator/contact details, and public-launch requirements.
-- [ ] Complete Discord OAuth lifecycle tests with a mocked provider or test credentials.
+- [x] Cover first and returning Discord sign-in, mocked callbacks, internal account creation, sessions, expiry/logout, invalid state, missing optional profile fields, duplicate-email linking restrictions, profile changes, secure cookie flags, protected routes, and publishing denial with isolated mocked-provider tests.
+- [ ] Run one live Discord OAuth flow with deployment credentials after callback URI and production HTTPS settings are configured.
 - [x] Verify effective Compose environment and healthy production-container startup against a disposable PostgreSQL instance.
 
 ## External launch decisions

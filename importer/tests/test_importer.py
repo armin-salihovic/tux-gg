@@ -2,8 +2,26 @@ from __future__ import annotations
 
 import io
 import json
+import os
+from unittest.mock import patch
 
+import psycopg
+
+from importer import tuxgg_importer
 from importer.tuxgg_importer import iter_json_array, normalize_record
+
+
+def test_importer_prefers_its_dedicated_database_role():
+    with patch.dict(
+        os.environ,
+        {
+            "IMPORTER_DATABASE_URL": "postgresql://tuxgg_importer@localhost/tuxgg",
+            "DATABASE_URL": "postgresql://tuxgg_web@localhost/tuxgg",
+        },
+    ), patch.object(psycopg, "connect", return_value=object()) as connect:
+        tuxgg_importer._connect()
+
+    connect.assert_called_once_with("postgresql://tuxgg_importer@localhost/tuxgg", autocommit=False)
 
 
 def legacy_report(**overrides):

@@ -26,7 +26,7 @@
 - Better Auth tables: user, session, account, and verification.
 - `native_reports`: future TuxGG contribution model, kept separate and not exposed for submission yet.
 
-The runtime database role has only the table privileges needed by Better Auth, catalog reads, and importer writes. It cannot create schema objects. Run migrations with an administrator/migration credential and refresh grants afterward.
+PostgreSQL has separate `tuxgg_web`, `tuxgg_importer`, and `tuxgg_migrator` roles. The web role reads catalog/import tables and manages Better Auth data, but cannot write imported ProtonDB reports or compatibility summaries. The importer can update games, imported reports, batches, and summaries without authentication-table access. The migration role owns TuxGG schema objects and applies schema changes; it is not used by either runtime process. `pnpm db:grant` applies grants to known TuxGG tables after each migration.
 
 ## Security boundaries
 
@@ -41,4 +41,6 @@ The runtime database role has only the table privileges needed by Better Auth, c
 
 PostgreSQL full-text search and `pg_trgm` support title searches and typo tolerance. Search/filter pages are noindexed and canonicalize to the catalog. Game pages use stable Steam app IDs, canonical slugs, Open Graph metadata, and `VideoGame` JSON-LD without claiming an AggregateRating. Low-evidence game pages stay out of the index until enough reports are available.
 
-Game cards and detail heroes use `src/lib/steam-assets.ts` to derive Steam CDN image candidates from validated app IDs. Existing `games.artwork_url` and `games.header_image_url` values are used only when they are HTTPS URLs from an allowlisted Steam asset host and match the same app ID. Browser image errors advance to an alternate Steam asset and then a styled TuxGG placeholder. Artwork URLs are not persisted or fetched server-side; the existing columns remain available for explicitly supplied metadata. Open Graph images are emitted only for a trusted header URL already present in the database.
+Game cards and detail heroes use `src/lib/steam-assets.ts` to derive Steam CDN image candidates from validated app IDs. Existing `games.artwork_url` and `games.header_image_url` values are used in the browser only when they are HTTPS URLs from an allowlisted Steam asset host and match the same app ID. Browser image errors advance once to an alternate Steam asset and then a styled TuxGG placeholder; intrinsic dimensions and aspect ratios reserve layout space. Artwork is not fetched during a server render. Since the database has no verified-availability field for Steam assets, game pages use the local TuxGG-branded `static/og-default.svg` for Open Graph and Twitter/X previews rather than publishing an unverified CDN URL.
+
+CI provisions an ephemeral PostgreSQL service, prepares a separately named and marked `tuxgg_test` database, checks that database setup leaves maintenance and unrelated database ownership and ACLs unchanged, runs importer recovery tests and mocked Discord lifecycle tests, and seeds deterministic Steam app fixtures before Playwright. Importer tests verify both the database name and marker before truncating tables.
