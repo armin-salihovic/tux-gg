@@ -346,7 +346,7 @@ export async function getGameReports(appId: string, filters: ReportFilters) {
 		.limit(pageSize)
 		.offset((page - 1) * pageSize);
 
-	const [launchOptions, hardware, nativeCount] = await Promise.all([
+	const [launchOptions, hardware] = await Promise.all([
 		db
 			.select({ value: reports.launchOptions, total: count() })
 			.from(reports)
@@ -371,11 +371,7 @@ export async function getGameReports(appId: string, filters: ReportFilters) {
 			.where(and(eq(reports.appId, appId), visibleImportedReport))
 			.groupBy(reports.gpu, reports.cpu, reports.distribution)
 			.orderBy(desc(count()))
-			.limit(6),
-		db
-			.select({ total: count() })
-			.from(nativeReports)
-			.where(and(eq(nativeReports.appId, appId), eq(nativeReports.moderationState, 'published')))
+			.limit(6)
 	]);
 	return {
 		reports: rows,
@@ -386,8 +382,88 @@ export async function getGameReports(appId: string, filters: ReportFilters) {
 		launchOptions: launchOptions
 			.filter((row) => row.value)
 			.map((row) => ({ value: row.value!, count: row.total })),
-		hardware,
-		nativeReportCount: nativeCount[0]?.total ?? 0
+		hardware
+	};
+}
+
+export async function getPublishedNativeReports(appId: string, requestedPage = 1) {
+	const db = getDb();
+	const pageSize = 10;
+	const page = Math.max(1, Math.min(10_000, requestedPage));
+	const where = and(eq(nativeReports.appId, appId), eq(nativeReports.moderationState, 'published'));
+	const [totalRow] = await db.select({ total: count() }).from(nativeReports).where(where);
+	const rows = await db
+		.select({
+			id: nativeReports.id,
+			authorUsername: authUser.username,
+			verdict: nativeReports.verdict,
+			platform: nativeReports.platform,
+			protonVersion: nativeReports.protonVersion,
+			protonVariant: nativeReports.protonVariant,
+			customProtonVersion: nativeReports.customProtonVersion,
+			distribution: nativeReports.distribution,
+			kernel: nativeReports.kernel,
+			cpu: nativeReports.cpu,
+			gpu: nativeReports.gpu,
+			gpuVendor: nativeReports.gpuVendor,
+			graphicsDriver: nativeReports.graphicsDriver,
+			ram: nativeReports.ram,
+			launchOptions: nativeReports.launchOptions,
+			performanceNotes: nativeReports.performanceNotes,
+			knownIssues: nativeReports.knownIssues,
+			content: nativeReports.content,
+			publishedAt: nativeReports.publishedAt
+		})
+		.from(nativeReports)
+		.innerJoin(authUser, eq(authUser.id, nativeReports.authorId))
+		.where(where)
+		.orderBy(desc(nativeReports.publishedAt), desc(nativeReports.createdAt), desc(nativeReports.id))
+		.limit(pageSize)
+		.offset((page - 1) * pageSize);
+	const total = totalRow?.total ?? 0;
+	return {
+		reports: rows,
+		total,
+		page,
+		pageSize,
+		pageCount: Math.max(1, Math.ceil(total / pageSize))
+	};
+}
+
+export async function getMyNativeReports(userId: string, requestedPage = 1) {
+	const db = getDb();
+	const pageSize = 20;
+	const page = Math.max(1, Math.min(10_000, requestedPage));
+	const [totalRow] = await db
+		.select({ total: count() })
+		.from(nativeReports)
+		.where(eq(nativeReports.authorId, userId));
+	const rows = await db
+		.select({
+			id: nativeReports.id,
+			appId: games.appId,
+			title: games.title,
+			slug: games.slug,
+			artworkUrl: games.artworkUrl,
+			verdict: nativeReports.verdict,
+			platform: nativeReports.platform,
+			content: nativeReports.content,
+			moderationState: nativeReports.moderationState,
+			createdAt: nativeReports.createdAt
+		})
+		.from(nativeReports)
+		.innerJoin(games, eq(games.appId, nativeReports.appId))
+		.where(eq(nativeReports.authorId, userId))
+		.orderBy(desc(nativeReports.createdAt), desc(nativeReports.id))
+		.limit(pageSize)
+		.offset((page - 1) * pageSize);
+	const total = totalRow?.total ?? 0;
+	return {
+		reports: rows,
+		total,
+		page,
+		pageSize,
+		pageCount: Math.max(1, Math.ceil(total / pageSize))
 	};
 }
 

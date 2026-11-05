@@ -24,7 +24,7 @@
 		{
 			title: 'Moderation and reporting',
 			paragraphs: [
-				'Native report publishing and moderation are not enabled yet. When contributions launch, TuxGG should provide a reporting and removal process and publish the moderation policy before accepting submissions.'
+				'New TuxGG reports are private while pending review. A moderator may publish, hide, or remove a report. Published reports show the author’s public TuxGG username and the technical details they chose to provide.'
 			]
 		}
 	];

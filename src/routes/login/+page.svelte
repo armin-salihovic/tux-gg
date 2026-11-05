@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { startSteamLogin } from '#lib/auth-login.js';
+	import type { PageData } from './$types';
+	let { data }: { data: PageData } = $props();
 
 	let busy = $state(false);
 	let message = $state(
@@ -11,7 +13,7 @@
 	async function signIn() {
 		busy = true;
 		message = '';
-		const result = await startSteamLogin();
+		const result = await startSteamLogin(fetch, data.returnTo);
 		if ('error' in result) {
 			message = result.error;
 			busy = false;

@@ -23,6 +23,12 @@
 			]
 		},
 		{
+			title: 'TuxGG community reports',
+			paragraphs: [
+				'If you submit a native report, TuxGG stores the compatibility verdict, platform, optional technical details, report text, and your account ID. It remains visible only in your My Reports page until an operator publishes it. A published report displays your public username and submitted report details on the game page. Do not include personal information.'
+			]
+		},
+		{
 			title: 'Your choices and contact',
 			paragraphs: [
 				'You can update the public display name and username in account settings. For account deletion and privacy requests, use the contact channel shown on the Contact page. If no address appears there, the deployment owner has not configured one yet.'

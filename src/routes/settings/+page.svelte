@@ -91,7 +91,7 @@
 			<p class="mt-2 text-sm text-muted">No Steam account is connected.</p>
 		{/if}
 		<p class="mt-5 text-xs leading-5 text-slate-500">
-			Steam sign-in manages your TuxGG profile. Native report publishing remains disabled.
+			Your Steam account can submit compatibility reports. They remain private until reviewed.
 		</p>
 	</div>
 	<a

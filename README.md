@@ -57,7 +57,9 @@ pnpm test:auth-integration
 
 Before running the command, point `DATABASE_URL` to the existing `tuxgg_web` credential on `tuxgg_test` and `MIGRATION_DATABASE_URL` to the existing `tuxgg_migrator` credential on that same database. Keep credentials unchanged. CI runs the suite with the restricted web role and production-cookie settings. Steam OpenID derives its realm from `PUBLIC_SITE_URL` and its callback path from Better Auth's configured base path. The site URL must be an origin without a path and must match Better Auth's origin. A live Steam login requires a reachable origin but no client ID or secret.
 
-Steam is the only sign-in provider. Steam OpenID supplies a verified SteamID64 but no email address. TuxGG stores that identity in the Better Auth `account` table and uses an unverified internal placeholder email that is never used for email or account linking. Better Auth manages sessions. A server-side Steam Web API key is optional and used only for profile enrichment; without it, sign-in uses fallback profile details. Native report publishing remains disabled.
+Steam is the only sign-in provider. Steam OpenID supplies a verified SteamID64 but no email address. TuxGG stores that identity in the Better Auth `account` table and uses an unverified internal placeholder email that is never used for email or account linking. Better Auth manages sessions. A server-side Steam Web API key is optional and used only for profile enrichment; without it, sign-in uses fallback profile details.
+
+Signed-in Steam users can select **Write a Report** on any game page and submit a compatibility verdict, platform, experience, and optional system details. Each report is stored in `native_reports` with `pending` moderation state and appears in `/my-reports` for its author. Only published TuxGG reports appear in the separate **TuxGG Community Reports** section on game pages; imported ProtonDB reports and their scoring remain unchanged.
 
 No database migration is needed for Steam sign-in. Existing user, account, session, and verification tables are reused; old account rows are left untouched and are not linked automatically. Set `PUBLIC_SITE_URL` to the canonical public origin and `PUBLIC_CONTACT_EMAIL` to a monitored address before public deployment.
 
@@ -85,8 +87,10 @@ The importer loads the project `.env` for local commands such as `pnpm import:sa
 
 The importer reads only the last selected pre-questionnaire-change export and the newest nested-schema export. It streams archive contents, excludes records whose primary operating system is ChromeOS/Chromebook, redacts email-shaped strings from displayable text, fingerprints full canonical source records, and preserves source provenance. See [docs/data-analysis.md](docs/data-analysis.md) for measured coverage, field mapping, scoring, licensing, and known limitations.
 
-TuxGG tiers are independent summaries, not official ProtonDB ratings. The method uses documented source-signal mappings, a 365-day half-life, and minimum evidence thresholds. Original source verdict/rating counts stay visible on game pages. Steam-only login creates TuxGG profiles, but native report publishing remains disabled because identity alone does not prove ownership of a particular game.
+TuxGG tiers are independent summaries, not official ProtonDB ratings. The method uses documented source-signal mappings, a 365-day half-life, and minimum evidence thresholds. Original source verdict/rating counts stay visible on game pages. Native TuxGG reports do not affect imported report counts or compatibility scoring.
 
 ## Deployment
 
 See [docs/deployment.md](docs/deployment.md) for the container workflow and environment checklist. Do not put passwords, Better Auth secrets, Steam API keys, production URLs, or generated `.env` files in source control.
+
+See [docs/native-reports.md](docs/native-reports.md) for the report submission flow, additive platform migration, least-privilege web grants, disposable test setup, and operator moderation commands.

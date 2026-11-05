@@ -20,7 +20,7 @@
 		{
 			title: 'Community reports',
 			paragraphs: [
-				'Steam OpenID sign-in supports a public account profile. Publishing native reports is disabled because Steam identity alone does not verify ownership of a particular game. The database keeps a separate model for future native reports so those contributions will remain distinct from imported ProtonDB reports.'
+				'Steam-authenticated users can submit reports from each game page. Reports start in private pending review and appear publicly only after operator approval. Native TuxGG reports use a separate data model and section from imported ProtonDB reports.'
 			]
 		}
 	];

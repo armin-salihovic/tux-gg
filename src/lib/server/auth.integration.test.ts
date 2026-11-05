@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { Pool } from 'pg';
 import type { RequestEvent } from '@sveltejs/kit';
 import { getAuth } from '#lib/server/auth.js';
-import { canPublishReports } from '#lib/server/authz.js';
+import { canPublishReports, canSubmitReports } from '#lib/server/authz.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authSession, authUser, authVerification } from '#lib/server/db/schema.js';
 import { getProfile } from '#lib/server/db/queries.js';
@@ -58,7 +58,7 @@ function sessionCookie(response: Response): string {
 	);
 }
 
-async function beginLogin() {
+async function beginLogin(requestedReturnTo?: string) {
 	const clientIp = `192.0.2.${(nonceSequence++ % 200) + 1}`;
 	const response = await auth.handler(
 		new Request(`${baseURL}/api/auth/steam/login`, {
@@ -68,7 +68,7 @@ async function beginLogin() {
 				origin: baseURL,
 				'x-forwarded-for': clientIp
 			},
-			body: '{}'
+			body: JSON.stringify(requestedReturnTo ? { returnTo: requestedReturnTo } : {})
 		})
 	);
 	expect(response.status).toBe(200);
@@ -239,6 +239,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 				"has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read_games, " +
 				"has_table_privilege(current_user, 'public.reports', 'SELECT') AS can_read_reports, " +
 				"has_table_privilege(current_user, 'public.reports', 'INSERT') AS can_write_reports, " +
+				"has_table_privilege(current_user, 'public.reports', 'UPDATE') AS can_update_imported_reports, " +
 				"has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE') AS can_update_summaries, " +
 				"has_table_privilege(current_user, 'public.user', 'SELECT') AS can_read_auth_users, " +
 				"has_table_privilege(current_user, 'public.user', 'UPDATE') AS can_lock_auth_users, " +
@@ -253,7 +254,13 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 				"has_table_privilege(current_user, 'public.verification', 'SELECT') AS can_read_verification, " +
 				"has_table_privilege(current_user, 'public.verification', 'INSERT') AS can_insert_verification, " +
 				"has_table_privilege(current_user, 'public.verification', 'UPDATE') AS can_update_verification, " +
-				"has_table_privilege(current_user, 'public.verification', 'DELETE') AS can_delete_verification"
+				"has_table_privilege(current_user, 'public.verification', 'DELETE') AS can_delete_verification, " +
+				"has_table_privilege(current_user, 'public.native_reports', 'SELECT') AS can_read_native_reports, " +
+				"has_table_privilege(current_user, 'public.native_reports', 'INSERT') AS can_insert_native_reports, " +
+				"has_column_privilege(current_user, 'public.native_reports', 'content', 'INSERT') AS can_insert_native_content, " +
+				"has_column_privilege(current_user, 'public.native_reports', 'moderation_state', 'INSERT') AS can_insert_native_moderation_state, " +
+				"has_table_privilege(current_user, 'public.native_reports', 'UPDATE') AS can_update_native_reports, " +
+				"has_table_privilege(current_user, 'public.native_reports', 'DELETE') AS can_delete_native_reports"
 		);
 		expect(permissions.rows[0]).toEqual({
 			role: 'tuxgg_web',
@@ -261,6 +268,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			can_read_games: true,
 			can_read_reports: true,
 			can_write_reports: false,
+			can_update_imported_reports: false,
 			can_update_summaries: false,
 			can_read_auth_users: true,
 			can_lock_auth_users: true,
@@ -275,7 +283,13 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			can_read_verification: true,
 			can_insert_verification: true,
 			can_update_verification: true,
-			can_delete_verification: true
+			can_delete_verification: true,
+			can_read_native_reports: true,
+			can_insert_native_reports: false,
+			can_insert_native_content: true,
+			can_insert_native_moderation_state: false,
+			can_update_native_reports: false,
+			can_delete_native_reports: false
 		});
 		// Exercise the actual FK check Better Auth hits when inserting an account for a new user.
 		// Roll the probe back so the auth suite only leaves its intentionally isolated test data.
@@ -333,6 +347,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		expect(session?.user?.emailVerified).toBe(false);
 		firstUserId = String(session?.user?.id);
 		expect(await canPublishReports(firstUserId)).toBe(false);
+		expect(await canSubmitReports(firstUserId)).toBe(true);
 		expect(JSON.stringify(session)).not.toContain('accessToken');
 
 		const account = await getDb()
@@ -386,6 +401,27 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		expect(savedState.callbackURL).toBe(`${new URL(siteURL).origin}/settings`);
 	});
 
+	it('binds a safe report-form return destination to the existing Steam login state', async () => {
+		const returnTo = '/games/440/team-fortress-2/report/new';
+		const flow = await beginLogin(returnTo);
+		const callback = new URL(flow.returnTo);
+		const state = callback.searchParams.get('state');
+		if (!state) throw new Error('Steam login state was missing.');
+		const [verification] = await getDb()
+			.select({ value: authVerification.value })
+			.from(authVerification)
+			.where(eq(authVerification.identifier, `auth-state:${state}`))
+			.limit(1);
+		const savedState = JSON.parse(verification!.value) as {
+			steamReturnTo?: string;
+			callbackURL?: string;
+		};
+		expect(savedState.steamReturnTo).toBe(returnTo);
+		expect(savedState.callbackURL).toBe(`${new URL(siteURL).origin}${returnTo}`);
+		const response = await finishLogin(flow, { steamId: steamIds[1] });
+		expect(response.headers.get('location')).toBe(`${new URL(siteURL).origin}${returnTo}`);
+	});
+
 	it('rejects a mismatched request origin before creating login state', async () => {
 		const response = await auth.handler(
 			new Request(`${baseURL}/api/auth/steam/login`, {
@@ -399,6 +435,24 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			})
 		);
 		expect(response.status).toBe(403);
+	});
+
+	it('rejects an external or protocol-relative login return destination', async () => {
+		for (const returnTo of ['https://attacker.invalid/', '//attacker.invalid/']) {
+			const response = await auth.handler(
+				new Request(`${baseURL}/api/auth/steam/login`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						origin: baseURL,
+						'x-forwarded-for': `192.0.2.${(nonceSequence++ % 200) + 1}`
+					},
+					body: JSON.stringify({ returnTo })
+				})
+			);
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: 'request_rejected' });
+		}
 	});
 
 	it('returns a safe unavailable response when verification-state insertion is denied', async () => {

@@ -6,6 +6,7 @@ import { setSessionCookie } from 'better-auth/cookies';
 import { handleOAuthUserInfo } from 'better-auth/oauth2';
 import { and, eq, like, lt } from 'drizzle-orm';
 import { z } from 'zod';
+import { validateSameOriginReturnTo } from '#lib/auth-return.js';
 import { getDb } from '#lib/server/db/db.js';
 import { authUser, authVerification } from '#lib/server/db/schema.js';
 import { logAuthDiagnostic } from '#lib/server/auth-diagnostics.js';
@@ -183,7 +184,7 @@ export function steamOpenID(apiKey: string | undefined, siteURL: string): Better
 				'/steam/login',
 				{
 					method: 'POST',
-					body: z.object({}),
+					body: z.object({ returnTo: z.string().max(2048).optional() }),
 					requireHeaders: true,
 					requireRequest: true,
 					metadata: { openapi: { description: 'Start Steam OpenID sign-in.' } }
@@ -211,6 +212,12 @@ export function steamOpenID(apiKey: string | undefined, siteURL: string): Better
 						ctx.setStatus(403);
 						return ctx.json({ error: 'request_rejected' });
 					}
+					const requestedReturnTo = ctx.body.returnTo ?? '/settings';
+					const returnDestination = validateSameOriginReturnTo(requestedReturnTo, origin);
+					if (!returnDestination) {
+						ctx.setStatus(400);
+						return ctx.json({ error: 'request_rejected' });
+					}
 					const realm = `${origin}/`;
 					const flowId = randomBytes(16).toString('hex');
 					let generated: Awaited<ReturnType<typeof generateGenericState>>;
@@ -218,7 +225,8 @@ export function steamOpenID(apiKey: string | undefined, siteURL: string): Better
 						generated = await generateGenericState(
 							ctx,
 							{
-								callbackURL: new URL('/settings', origin).toString(),
+								callbackURL: new URL(returnDestination, origin).toString(),
+								steamReturnTo: returnDestination,
 								errorURL: new URL('/login', origin).toString(),
 								codeVerifier: randomBytes(32).toString('base64url'),
 								expiresAt: Date.now() + FLOW_TTL_MS,
@@ -281,15 +289,19 @@ export function steamOpenID(apiKey: string | undefined, siteURL: string): Better
 					const flow = stateData as typeof stateData & {
 						steamFlowId?: unknown;
 						steamRealm?: unknown;
+						steamReturnTo?: unknown;
 					};
 					const realm = `${origin}/`;
+					const safeReturnTo = validateSameOriginReturnTo(flow.steamReturnTo, origin);
 					const returnTo = new URL(callback);
 					returnTo.searchParams.set('flow', flowId);
 					returnTo.searchParams.set('state', state);
 					if (
 						flow.steamFlowId !== flowId ||
 						flow.steamRealm !== realm ||
-						flow.callbackURL !== new URL('/settings', origin).toString()
+						!safeReturnTo ||
+						flow.steamReturnTo !== safeReturnTo ||
+						flow.callbackURL !== new URL(safeReturnTo, origin).toString()
 					) {
 						throw ctx.redirect(loginErrorURL(origin, 'steam_state_invalid'));
 					}

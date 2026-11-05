@@ -43,6 +43,27 @@ WEB_PRIVILEGES = {
     "verification": "SELECT, INSERT, UPDATE, DELETE",
     "native_reports": "SELECT",
 }
+NATIVE_REPORT_INSERT_COLUMNS = (
+    "id",
+    "app_id",
+    "author_id",
+    "verdict",
+    "platform",
+    "proton_version",
+    "proton_variant",
+    "custom_proton_version",
+    "distribution",
+    "kernel",
+    "cpu",
+    "gpu",
+    "gpu_vendor",
+    "graphics_driver",
+    "ram",
+    "launch_options",
+    "performance_notes",
+    "known_issues",
+    "content",
+)
 IMPORTER_PRIVILEGES = {
     "games": "SELECT, INSERT, UPDATE",
     "reports": "SELECT, INSERT, UPDATE",
@@ -294,6 +315,25 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                             sql.Identifier(table), sql.Identifier(role)
                         )
                     )
+                if table == "native_reports":
+                    cur.execute(
+                        "SELECT attname FROM pg_attribute "
+                        "WHERE attrelid = to_regclass(%s) AND attnum > 0 AND NOT attisdropped "
+                        "ORDER BY attnum",
+                        ("public.native_reports",),
+                    )
+                    columns = [sql.Identifier(row[0]) for row in cur.fetchall()]
+                    if columns:
+                        column_list = sql.SQL(", ").join(columns)
+                        revoke_columns = sql.SQL(
+                            "INSERT ({columns}), UPDATE ({columns}), REFERENCES ({columns})"
+                        ).format(columns=column_list)
+                        for role in revoke_roles:
+                            cur.execute(
+                                sql.SQL("REVOKE {privileges} ON TABLE public.native_reports FROM {role}").format(
+                                    privileges=revoke_columns, role=sql.Identifier(role)
+                                )
+                            )
                 if table in WEB_PRIVILEGES:
                     for role in (WEB_ROLE, LEGACY_ROLE) if legacy_exists else (WEB_ROLE,):
                         cur.execute(
@@ -301,6 +341,28 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                                 sql.Identifier(table), sql.Identifier(role)
                             )
                         )
+                if table == "native_reports":
+                    cur.execute(
+                        "SELECT attname FROM pg_attribute "
+                        "WHERE attrelid = to_regclass(%s) AND attnum > 0 AND NOT attisdropped",
+                        ("public.native_reports",),
+                    )
+                    available_native_columns = {row[0] for row in cur.fetchall()}
+                    grantable_native_columns = [
+                        column
+                        for column in NATIVE_REPORT_INSERT_COLUMNS
+                        if column in available_native_columns
+                    ]
+                    insert_columns = sql.SQL(", ").join(
+                        sql.Identifier(column) for column in grantable_native_columns
+                    )
+                    if grantable_native_columns:
+                        for role in (WEB_ROLE, LEGACY_ROLE) if legacy_exists else (WEB_ROLE,):
+                            cur.execute(
+                                sql.SQL(
+                                    "GRANT INSERT ({columns}) ON TABLE public.native_reports TO {role}"
+                                ).format(columns=insert_columns, role=sql.Identifier(role))
+                            )
                 if table in IMPORTER_PRIVILEGES:
                     cur.execute(
                         sql.SQL("GRANT " + IMPORTER_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(

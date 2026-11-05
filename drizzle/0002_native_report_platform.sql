@@ -1,0 +1,2 @@
+ALTER TABLE "native_reports" ADD COLUMN "platform" text;--> statement-breakpoint
+ALTER TABLE "native_reports" ADD CONSTRAINT "native_reports_platform_check" CHECK ("native_reports"."platform" is null or "native_reports"."platform" in ('steam_deck', 'linux_desktop'));

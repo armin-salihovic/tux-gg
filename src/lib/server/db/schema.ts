@@ -253,6 +253,7 @@ export const nativeReports = pgTable(
 			.notNull()
 			.references(() => authUser.id, { onDelete: 'cascade' }),
 		verdict: text('verdict').notNull(),
+		platform: text('platform'),
 		protonVersion: text('proton_version'),
 		protonVariant: text('proton_variant'),
 		customProtonVersion: text('custom_proton_version'),
@@ -276,6 +277,10 @@ export const nativeReports = pgTable(
 		index('native_reports_game_date_idx').on(table.appId, desc(table.createdAt)),
 		index('native_reports_author_idx').on(table.authorId, desc(table.createdAt)),
 		check('native_reports_verdict_check', sql`${table.verdict} in ('yes', 'no')`),
+		check(
+			'native_reports_platform_check',
+			sql`${table.platform} is null or ${table.platform} in ('steam_deck', 'linux_desktop')`
+		),
 		check(
 			'native_reports_moderation_check',
 			sql`${table.moderationState} in ('pending', 'published', 'hidden', 'removed')`

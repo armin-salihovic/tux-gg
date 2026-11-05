@@ -113,8 +113,15 @@ def main() -> int:
                 "has_table_privilege(current_user, 'public.games', 'SELECT')": True,
                 "has_table_privilege(current_user, 'public.reports', 'SELECT')": True,
                 "has_table_privilege(current_user, 'public.reports', 'INSERT')": False,
+                "has_table_privilege(current_user, 'public.reports', 'UPDATE')": False,
                 "has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE')": False,
                 "has_table_privilege(current_user, 'public.user', 'UPDATE')": True,
+                "has_table_privilege(current_user, 'public.native_reports', 'SELECT')": True,
+                "has_table_privilege(current_user, 'public.native_reports', 'INSERT')": False,
+                "has_column_privilege(current_user, 'public.native_reports', 'content', 'INSERT')": True,
+                "has_column_privilege(current_user, 'public.native_reports', 'moderation_state', 'INSERT')": False,
+                "has_table_privilege(current_user, 'public.native_reports', 'UPDATE')": False,
+                "has_table_privilege(current_user, 'public.native_reports', 'DELETE')": False,
             },
         )
         assert_runtime_privileges(

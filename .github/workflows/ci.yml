@@ -56,6 +56,7 @@ jobs:
       - run: python scripts/export_ci_test_database_urls.py
       - run: pnpm db:migrate
       - run: pnpm db:test:prepare
+      - run: pnpm db:test:seed-e2e
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm check
@@ -63,13 +64,13 @@ jobs:
       - run: pnpm test:auth-integration
         env:
           AUTH_INTEGRATION_TESTS: '1'
+          NATIVE_REPORT_INTEGRATION_TESTS: '1'
           NODE_ENV: production
           BETTER_AUTH_URL: https://localhost:5173
           PUBLIC_SITE_URL: https://localhost:5173
           STEAM_API_KEY: ci-mocked-steam-api-key
       - run: python -m pytest -q importer/tests
       - run: python -m pytest -q tests
-      - run: pnpm db:test:seed-e2e
       - run: pnpm build
       - run: docker build --tag tuxgg:ci .
       - run: pnpm exec playwright install --with-deps chromium

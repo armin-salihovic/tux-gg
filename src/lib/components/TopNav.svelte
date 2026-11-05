@@ -62,6 +62,10 @@
 				</a>
 				<a
 					class="rounded-full px-3 py-2 text-sm text-slate-300 transition hover:text-mint"
+					href="/my-reports">My Reports</a
+				>
+				<a
+					class="rounded-full px-3 py-2 text-sm text-slate-300 transition hover:text-mint"
 					href="/settings">Settings</a
 				>
 				<button
@@ -116,6 +120,11 @@
 					class="rounded-lg px-3 py-2 text-slate-200 hover:bg-white/5"
 					href="/settings"
 					onclick={() => (menuOpen = false)}>{user.name} · Settings</a
+				>
+				<a
+					class="rounded-lg px-3 py-2 text-slate-200 hover:bg-white/5"
+					href="/my-reports"
+					onclick={() => (menuOpen = false)}>My Reports</a
 				>
 				<button
 					class="rounded-lg px-3 py-2 text-left text-slate-200 hover:bg-white/5"

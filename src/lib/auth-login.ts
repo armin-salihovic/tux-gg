@@ -38,14 +38,15 @@ function isSteamAuthorizationURL(value: unknown): value is string {
 }
 
 export async function startSteamLogin(
-	fetcher: typeof fetch = fetch
+	fetcher: typeof fetch = fetch,
+	returnTo?: string
 ): Promise<{ url: string } | { error: string }> {
 	let response: Response;
 	try {
 		response = await fetcher('/api/auth/steam/login', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: '{}'
+			body: JSON.stringify(returnTo ? { returnTo } : {})
 		});
 	} catch {
 		return { error: STEAM_LOGIN_MESSAGES.network };

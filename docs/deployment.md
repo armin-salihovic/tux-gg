@@ -3,7 +3,7 @@
 ## Before deployment
 
 1. Set `PGADMIN_URL` to an administrator connection on the `postgres` maintenance database. Keep it on the deployment host and run `pnpm db:setup` once. Setup creates `tuxgg_web`, `tuxgg_importer`, and `tuxgg_migrator`, and changes schema privileges only after connecting to `tuxgg`.
-2. Run `pnpm db:migrate` with the generated `MIGRATION_DATABASE_URL`, then run `pnpm db:grant` to apply the reviewed table grants. Repeat the grant command after each migration that adds tables.
+2. Run `pnpm db:migrate` with the generated `MIGRATION_DATABASE_URL`, then run `pnpm db:grant` to apply the reviewed table grants. Repeat the grant command after each migration that adds tables. Migration `0002_native_report_platform.sql` adds a nullable platform column and a check constraint; it does not delete or rewrite report data. The web role receives column-level `INSERT` access for native report content only and cannot set moderation fields or update reports.
 3. Import and inspect the local corpus using `IMPORTER_DATABASE_URL`. Do not pass importer or migration credentials to the web container. Do not add source archives or private `.env` files to the container image.
 4. Set a random `BETTER_AUTH_SECRET` of at least 32 bytes, `BETTER_AUTH_URL`, canonical `PUBLIC_SITE_URL`, and the externally visible `ORIGIN`. `BETTER_AUTH_URL` and `PUBLIC_SITE_URL` must be matching origin URLs with no path; production origins must use HTTPS. `STEAM_API_KEY` is optional and is used only to retrieve public Steam profile details.
 5. Set `PUBLIC_CONTACT_EMAIL` to a monitored address and replace example operator/legal details before opening the service publicly.
@@ -32,6 +32,7 @@ The app listens on container port 3000 and checks `/healthz`, which also verifie
 - Rebuild summaries after full import or any scoring logic change.
 - Run migrations with `tuxgg_migrator`, then refresh the web/importer table grants. Keep the migration URL out of the web process.
 - Use `tuxgg_web` for the SvelteKit process and `tuxgg_importer` for ProtonDB imports. The web role can read imported reports but cannot insert/update them or change summaries; the importer role has no access to Better Auth tables.
+- Keep `NATIVE_REPORT_OPERATOR_DATABASE_URL` outside the web container. Set it only in the operator's shell for `python scripts/moderate_native_reports.py list|approve|hide|remove`; see [native-reports.md](native-reports.md) for examples and the disposable test workflow.
 - For existing installations using `tuxgg_app`, rerun `pnpm db:setup`, review the generated URLs, restart the web service, and switch import jobs to `IMPORTER_DATABASE_URL`. The legacy login receives web-only grants so an old process can continue during the credential transition.
 - Keep database and authentication credentials in the host secret store or a permission-restricted environment file.
 - Review privacy, contact, licensing, and operator details before public launch.

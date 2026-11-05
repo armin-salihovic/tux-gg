@@ -18,6 +18,9 @@
 		if (page > 1) p.set('page', String(page));
 		return `${gamePath}${p.size ? `?${p}` : ''}`;
 	}
+	function nativePageHref(page: number) {
+		return `${gamePath}?communityPage=${page}`;
+	}
 	const jsonLd = $derived(
 		data.available && data.game
 			? JSON.stringify({
@@ -145,12 +148,68 @@
 		</div>
 	</section>
 
-	<section class="container-shell mt-10 grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
+	<section class="container-shell mt-8">
+		<div class="rounded-2xl border border-lime/15 bg-lime/[0.045] p-5 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-6">
+			<div>
+				<p class="eyebrow !text-lime">Share your experience</p>
+				<h2 class="mt-1 text-lg font-bold text-white">Played this game on Linux or Steam Deck?</h2>
+				<p class="mt-1 max-w-2xl text-sm leading-6 text-slate-300">Help other players by sharing how it runs. TuxGG community reports are reviewed before they are published.</p>
+			</div>
+			<a class="mt-4 inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-mint px-5 py-3 text-sm font-extrabold text-ink hover:bg-lime sm:mt-0" href={`${gamePath}/report/new`}>Write a Report</a>
+		</div>
+	</section>
+
+	<section class="container-shell mt-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
 		<div>
+			<section aria-labelledby="native-reports-heading" class="mb-10">
+				<div class="flex flex-wrap items-end justify-between gap-3">
+					<div>
+						<p class="eyebrow">TuxGG Community Reports</p>
+						<h2 id="native-reports-heading" class="mt-2 text-2xl font-extrabold text-white">Player-submitted reports</h2>
+					</div>
+					{#if data.nativeReportData}<span class="text-xs text-muted">{data.nativeReportData.total.toLocaleString()} published</span>{/if}
+				</div>
+				{#if !data.nativeReportData}
+					<div class="mt-5 rounded-2xl border border-amber-200/20 bg-amber-200/[0.05] p-5 text-sm text-amber-100">TuxGG community reports are temporarily unavailable.</div>
+				{:else if data.nativeReportData.reports.length}
+					<div class="mt-5 grid gap-4">
+						{#each data.nativeReportData.reports as report (report.id)}
+							<article class="surface rounded-2xl p-5 sm:p-6">
+								<div class="flex flex-wrap items-start justify-between gap-3">
+									<div>
+										<a class="font-bold text-white hover:text-mint" href={`/users/${report.authorUsername}`}>@{report.authorUsername}</a>
+										<p class="mt-1 text-sm text-slate-300">{report.verdict === 'yes' ? 'Yes — works' : 'No — does not work'} · {report.platform === 'steam_deck' ? 'Steam Deck' : report.platform === 'linux_desktop' ? 'Linux desktop' : 'Platform not specified'}</p>
+									</div>
+									{#if report.publishedAt}<time class="text-xs text-muted" datetime={report.publishedAt.toISOString()}>{dateFormat.format(report.publishedAt)}</time>{/if}
+								</div>
+								{#if report.protonVersion || report.protonVariant || report.customProtonVersion || report.distribution || report.kernel || report.cpu || report.gpu || report.gpuVendor || report.graphicsDriver || report.ram || report.launchOptions}
+									<dl class="mt-4 grid gap-x-5 gap-y-2 border-t border-white/[0.06] pt-4 sm:grid-cols-2">
+										{#if report.protonVersion || report.protonVariant || report.customProtonVersion}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Proton</dt><dd class="mt-0.5 text-sm text-slate-200">{[report.protonVariant, report.protonVersion, report.customProtonVersion].filter(Boolean).join(' · ')}</dd></div>{/if}
+										{#if report.distribution}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Distribution</dt><dd class="mt-0.5 text-sm text-slate-200">{report.distribution}</dd></div>{/if}
+										{#if report.gpu || report.gpuVendor || report.graphicsDriver}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Graphics</dt><dd class="mt-0.5 text-sm text-slate-200">{[report.gpuVendor, report.gpu, report.graphicsDriver].filter(Boolean).join(' · ')}</dd></div>{/if}
+										{#if report.cpu || report.kernel || report.ram}<div><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">System</dt><dd class="mt-0.5 text-sm text-slate-200">{[report.cpu, report.kernel ? `Kernel ${report.kernel}` : null, report.ram].filter(Boolean).join(' · ')}</dd></div>{/if}
+										{#if report.launchOptions}<div class="sm:col-span-2"><dt class="text-[0.68rem] font-semibold uppercase tracking-wide text-slate-500">Launch options</dt><dd class="mt-0.5 break-words font-mono text-xs text-mint">{report.launchOptions}</dd></div>{/if}
+									</dl>
+								{/if}
+								{#if report.content}<p class="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-slate-200">{report.content}</p>{/if}
+								{#if report.performanceNotes}<div class="mt-4 rounded-xl bg-white/[0.035] p-3"><p class="text-xs font-semibold text-slate-400">Performance notes</p><p class="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-200">{report.performanceNotes}</p></div>{/if}
+								{#if report.knownIssues}<div class="mt-3 rounded-xl bg-rose-200/[0.04] p-3"><p class="text-xs font-semibold text-rose-100/80">Known issues</p><p class="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-200">{report.knownIssues}</p></div>{/if}
+							</article>
+						{/each}
+					</div>
+					{#if data.nativeReportData.pageCount > 1}<nav class="mt-5 flex items-center justify-between gap-3" aria-label="TuxGG community report pages">
+						{#if data.nativeReportData.page > 1}<a class="rounded-xl border border-line px-4 py-2 text-sm text-white hover:border-mint/40" href={nativePageHref(data.nativeReportData.page - 1)}>← Previous</a>{:else}<span></span>{/if}
+						<span class="text-xs text-muted">Page {data.nativeReportData.page} of {data.nativeReportData.pageCount}</span>
+						{#if data.nativeReportData.page < data.nativeReportData.pageCount}<a class="rounded-xl border border-line px-4 py-2 text-sm text-white hover:border-mint/40" href={nativePageHref(data.nativeReportData.page + 1)}>Next →</a>{:else}<span></span>{/if}
+					</nav>{/if}
+				{:else}
+					<p class="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 text-sm text-muted">No TuxGG community reports have been published for this game yet.</p>
+				{/if}
+			</section>
 			<div class="flex flex-wrap items-end justify-between gap-3">
 				<div>
 					<p class="eyebrow">Player experience</p>
-					<h2 class="mt-2 text-2xl font-extrabold text-white">Compatibility reports</h2>
+					<h2 class="mt-2 text-2xl font-extrabold text-white">Imported ProtonDB reports</h2>
 				</div>
 				<span class="text-xs text-muted">Imported ProtonDB reports are labeled below.</span>
 			</div>
@@ -260,16 +319,6 @@
 					>Apply filters</button
 				>
 			</form>
-			<div class="rounded-2xl border border-lime/15 bg-lime/[0.045] p-5">
-				<p class="eyebrow !text-lime">Share your experience</p>
-				<p class="mt-2 text-sm leading-6 text-slate-300">
-					Native TuxGG reports are not open yet. Report publishing requires verified Steam account
-					linking.
-				</p>
-				<a class="mt-3 inline-flex text-sm font-bold text-lime hover:text-mint" href="/about"
-					>How contributions work →</a
-				>
-			</div>
 			{#if data.reportData?.launchOptions.length}<div class="surface rounded-2xl p-5">
 					<h2 class="font-bold text-white">Common launch options</h2>
 					<div class="mt-3 space-y-3">

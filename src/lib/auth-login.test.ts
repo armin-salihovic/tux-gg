@@ -20,6 +20,16 @@ describe('Steam login initiation client', () => {
 		});
 	});
 
+	it('sends the validated server-provided return destination to the state-bound login endpoint', async () => {
+		const fetcher = vi.fn(async () => Response.json({ url: authorizationURL.toString() }));
+		await startSteamLogin(fetcher, '/games/440/team-fortress-2/report/new');
+		expect(fetcher).toHaveBeenCalledWith('/api/auth/steam/login', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ returnTo: '/games/440/team-fortress-2/report/new' })
+		});
+	});
+
 	it('handles non-JSON error responses without masking them as network failures', async () => {
 		const result = await startSteamLogin(
 			async () => new Response('<html>failure</html>', { status: 500 })

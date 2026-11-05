@@ -133,6 +133,10 @@ test('game pages render canonical Steam artwork and match sitemap indexability',
 	const gameResponse = await page.goto('/games/440/team-fortress-2');
 	expect(gameResponse?.status()).toBe(200);
 	await expect(page.getByRole('heading', { name: 'Team Fortress 2', level: 1 })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Write a Report' })).toHaveAttribute(
+		'href',
+		'/games/440/team-fortress-2/report/new'
+	);
 	await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
 		'href',
 		'http://localhost:5173/games/440/team-fortress-2'
@@ -316,14 +320,44 @@ test('changed game slugs redirect canonically and missing games return 404', asy
 	expect(missing.status()).toBe(404);
 });
 
-test('account settings require sign-in and native report publishing is unavailable', async ({
-	page
-}) => {
+test('account settings, My Reports, and report forms require sign-in', async ({ page }) => {
 	const settings = await page.request.get('/settings', { maxRedirects: 0 });
 	expect(settings.status()).toBe(303);
 	expect(settings.headers().location).toBe('/login');
-	const reportSubmission = await page.request.post('/api/reports', {
-		data: { appId: '440', verdict: 'yes' }
+	const myReports = await page.request.get('/my-reports', { maxRedirects: 0 });
+	expect(myReports.status()).toBe(303);
+	expect(myReports.headers().location).toBe('/login?returnTo=%2Fmy-reports');
+	const form = await page.request.get('/games/440/team-fortress-2/report/new', {
+		maxRedirects: 0
 	});
-	expect(reportSubmission.status()).toBe(404);
+	expect(form.status()).toBe(303);
+	expect(form.headers().location).toBe(
+		'/login?returnTo=%2Fgames%2F440%2Fteam-fortress-2%2Freport%2Fnew'
+	);
+	const reportSubmission = await page.request.post('/games/440/team-fortress-2/report/new', {
+		form: {
+			id: '11111111-1111-4111-8111-111111111111',
+			verdict: 'yes',
+			platform: 'steam_deck',
+			content: 'This guest must not submit a report.'
+		},
+		headers: { origin: 'http://127.0.0.1:4179' },
+		maxRedirects: 0
+	});
+	expect(reportSubmission.status()).toBe(303);
+	expect(reportSubmission.headers().location).toBe(
+		'/login?returnTo=%2Fgames%2F440%2Fteam-fortress-2%2Freport%2Fnew'
+	);
+});
+
+test('Write a Report remains visible within a mobile game page', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/games/440/team-fortress-2');
+	const writeReport = page.getByRole('link', { name: 'Write a Report' });
+	await expect(writeReport).toBeVisible();
+	await expect(writeReport).toHaveAttribute('href', '/games/440/team-fortress-2/report/new');
+	const bounds = await writeReport.boundingBox();
+	expect(bounds).not.toBeNull();
+	expect(bounds!.x).toBeGreaterThanOrEqual(0);
+	expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
 });

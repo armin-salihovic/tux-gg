@@ -4,6 +4,7 @@ import {
 	canPublishReports,
 	isSteamLinkedProvider,
 	requireSteamLinkedPublisher,
+	requireSteamLinkedSubmitter,
 	requireUser
 } from './authz.js';
 
@@ -14,7 +15,7 @@ describe('report publishing authorization', () => {
 		expect(isSteamLinkedProvider(null)).toBe(false);
 	});
 
-	it('keeps native report publishing disabled for Steam accounts', async () => {
+	it('keeps report publication separate and disabled for regular users', async () => {
 		expect(await canPublishReports('steam-user')).toBe(false);
 	});
 
@@ -22,6 +23,10 @@ describe('report publishing authorization', () => {
 		const event = { locals: { user: null, session: null } } as RequestEvent;
 		expect(() => requireUser(event)).toThrow();
 		await expect(requireSteamLinkedPublisher(event)).rejects.toMatchObject({
+			status: 303,
+			location: '/login'
+		});
+		await expect(requireSteamLinkedSubmitter(event)).rejects.toMatchObject({
 			status: 303,
 			location: '/login'
 		});
