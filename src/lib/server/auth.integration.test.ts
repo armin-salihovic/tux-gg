@@ -259,6 +259,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 				"has_table_privilege(current_user, 'public.native_reports', 'INSERT') AS can_insert_native_reports, " +
 				"has_column_privilege(current_user, 'public.native_reports', 'content', 'INSERT') AS can_insert_native_content, " +
 				"has_column_privilege(current_user, 'public.native_reports', 'moderation_state', 'INSERT') AS can_insert_native_moderation_state, " +
+				"has_column_privilege(current_user, 'public.native_reports', 'published_at', 'INSERT') AS can_insert_native_published_at, " +
 				"has_table_privilege(current_user, 'public.native_reports', 'UPDATE') AS can_update_native_reports, " +
 				"has_table_privilege(current_user, 'public.native_reports', 'DELETE') AS can_delete_native_reports"
 		);
@@ -288,9 +289,38 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			can_insert_native_reports: false,
 			can_insert_native_content: true,
 			can_insert_native_moderation_state: false,
+			can_insert_native_published_at: false,
 			can_update_native_reports: false,
 			can_delete_native_reports: false
 		});
+		const nativeColumnPrivileges = await pool.query(
+			"SELECT attname, has_column_privilege(current_user, 'public.native_reports', attname, 'INSERT') AS can_insert " +
+				"FROM pg_attribute WHERE attrelid = to_regclass('public.native_reports') " +
+				'AND attnum > 0 AND NOT attisdropped ORDER BY attnum'
+		);
+		expect(
+			nativeColumnPrivileges.rows.filter((row) => row.can_insert).map((row) => row.attname)
+		).toEqual([
+			'id',
+			'app_id',
+			'author_id',
+			'verdict',
+			'platform',
+			'proton_version',
+			'proton_variant',
+			'custom_proton_version',
+			'distribution',
+			'kernel',
+			'cpu',
+			'gpu',
+			'gpu_vendor',
+			'graphics_driver',
+			'ram',
+			'launch_options',
+			'performance_notes',
+			'known_issues',
+			'content'
+		]);
 		// Exercise the actual FK check Better Auth hits when inserting an account for a new user.
 		// Roll the probe back so the auth suite only leaves its intentionally isolated test data.
 		const privilegeProbe = await pool.connect();

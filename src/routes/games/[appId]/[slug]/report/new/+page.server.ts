@@ -6,10 +6,15 @@ import type { Actions, PageServerLoad } from './$types';
 import { nativeReportSchema } from '#lib/native-report-validation.js';
 import { canSubmitReports } from '#lib/server/authz.js';
 import { getDb } from '#lib/server/db/db.js';
-import { games, nativeReports } from '#lib/server/db/schema.js';
+import { games } from '#lib/server/db/schema.js';
 import { getGameById } from '#lib/server/db/queries.js';
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
-import { reserveNativeReportSubmission } from '#lib/server/native-report-rate-limit.js';
+import { logDatabaseFailure } from '#lib/server/database-errors.js';
+import {
+	releaseNativeReportSubmission,
+	reserveNativeReportSubmission
+} from '#lib/server/native-report-rate-limit.js';
+import { insertNativeReport } from '#lib/server/native-reports.js';
 
 const appIdPattern = /^\d{1,20}$/;
 
@@ -99,7 +104,8 @@ export const actions: Actions = {
 		}
 		if (!game) error(404, 'Game not found');
 		if (game.slug !== params.slug) redirect(308, `/games/${game.appId}/${game.slug}/report/new`);
-		if (!reserveNativeReportSubmission(locals.user.id)) {
+		const reservation = reserveNativeReportSubmission(locals.user.id);
+		if (!reservation) {
 			return fail(429, {
 				values,
 				formError: 'You have submitted several reports recently. Please try again later.'
@@ -108,13 +114,12 @@ export const actions: Actions = {
 
 		const report = parsed.data;
 		try {
-			await getDb().insert(nativeReports).values({
+			await insertNativeReport({
 				id: report.id,
 				appId: game.appId,
 				authorId: locals.user.id,
 				verdict: report.verdict,
 				platform: report.platform,
-				content: report.content,
 				protonVersion: report.protonVersion,
 				protonVariant: report.protonVariant,
 				customProtonVersion: report.customProtonVersion,
@@ -127,9 +132,11 @@ export const actions: Actions = {
 				ram: report.ram,
 				launchOptions: report.launchOptions,
 				performanceNotes: report.performanceNotes,
-				knownIssues: report.knownIssues
+				knownIssues: report.knownIssues,
+				content: report.content
 			});
 		} catch (cause) {
+			releaseNativeReportSubmission(locals.user.id, reservation);
 			if (
 				typeof cause === 'object' &&
 				cause !== null &&
@@ -141,6 +148,7 @@ export const actions: Actions = {
 					formError: 'This form was already submitted. Reload the page to start another report.'
 				});
 			}
+			logDatabaseFailure('native report submission', cause);
 			return fail(503, {
 				values,
 				formError: 'Your report could not be saved. Please try again shortly.'

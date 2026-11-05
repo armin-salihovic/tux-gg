@@ -72,6 +72,44 @@ IMPORTER_PRIVILEGES = {
 }
 
 
+def grant_native_report_insert_columns(cur, roles) -> None:
+    """Grant only the report fields accepted from web submissions."""
+    from psycopg import sql
+
+    cur.execute(
+        "SELECT attname FROM pg_attribute "
+        "WHERE attrelid = to_regclass(%s) AND attnum > 0 AND NOT attisdropped "
+        "ORDER BY attnum",
+        ("public.native_reports",),
+    )
+    available_columns = [row[0] for row in cur.fetchall()]
+    if not available_columns:
+        return
+
+    all_columns = sql.SQL(", ").join(sql.Identifier(column) for column in available_columns)
+    revoke_columns = sql.SQL(
+        "INSERT ({columns}), UPDATE ({columns}), REFERENCES ({columns})"
+    ).format(columns=all_columns)
+    for role in roles:
+        cur.execute(
+            sql.SQL("REVOKE {privileges} ON TABLE public.native_reports FROM {role}").format(
+                privileges=revoke_columns, role=sql.Identifier(role)
+            )
+        )
+
+    allowed_columns = [
+        column for column in NATIVE_REPORT_INSERT_COLUMNS if column in available_columns
+    ]
+    if allowed_columns:
+        insert_columns = sql.SQL(", ").join(sql.Identifier(column) for column in allowed_columns)
+        for role in roles:
+            cur.execute(
+                sql.SQL("GRANT INSERT ({columns}) ON TABLE public.native_reports TO {role}").format(
+                    columns=insert_columns, role=sql.Identifier(role)
+                )
+            )
+
+
 def read_env_file() -> dict[str, str]:
     values: dict[str, str] = {}
     if not ENV_FILE.exists():
@@ -315,25 +353,6 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                             sql.Identifier(table), sql.Identifier(role)
                         )
                     )
-                if table == "native_reports":
-                    cur.execute(
-                        "SELECT attname FROM pg_attribute "
-                        "WHERE attrelid = to_regclass(%s) AND attnum > 0 AND NOT attisdropped "
-                        "ORDER BY attnum",
-                        ("public.native_reports",),
-                    )
-                    columns = [sql.Identifier(row[0]) for row in cur.fetchall()]
-                    if columns:
-                        column_list = sql.SQL(", ").join(columns)
-                        revoke_columns = sql.SQL(
-                            "INSERT ({columns}), UPDATE ({columns}), REFERENCES ({columns})"
-                        ).format(columns=column_list)
-                        for role in revoke_roles:
-                            cur.execute(
-                                sql.SQL("REVOKE {privileges} ON TABLE public.native_reports FROM {role}").format(
-                                    privileges=revoke_columns, role=sql.Identifier(role)
-                                )
-                            )
                 if table in WEB_PRIVILEGES:
                     for role in (WEB_ROLE, LEGACY_ROLE) if legacy_exists else (WEB_ROLE,):
                         cur.execute(
@@ -342,27 +361,10 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                             )
                         )
                 if table == "native_reports":
-                    cur.execute(
-                        "SELECT attname FROM pg_attribute "
-                        "WHERE attrelid = to_regclass(%s) AND attnum > 0 AND NOT attisdropped",
-                        ("public.native_reports",),
+                    grant_native_report_insert_columns(
+                        cur,
+                        (WEB_ROLE, LEGACY_ROLE) if legacy_exists else (WEB_ROLE,),
                     )
-                    available_native_columns = {row[0] for row in cur.fetchall()}
-                    grantable_native_columns = [
-                        column
-                        for column in NATIVE_REPORT_INSERT_COLUMNS
-                        if column in available_native_columns
-                    ]
-                    insert_columns = sql.SQL(", ").join(
-                        sql.Identifier(column) for column in grantable_native_columns
-                    )
-                    if grantable_native_columns:
-                        for role in (WEB_ROLE, LEGACY_ROLE) if legacy_exists else (WEB_ROLE,):
-                            cur.execute(
-                                sql.SQL(
-                                    "GRANT INSERT ({columns}) ON TABLE public.native_reports TO {role}"
-                                ).format(columns=insert_columns, role=sql.Identifier(role))
-                            )
                 if table in IMPORTER_PRIVILEGES:
                     cur.execute(
                         sql.SQL("GRANT " + IMPORTER_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(

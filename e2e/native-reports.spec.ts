@@ -76,6 +76,16 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await expect(page.getByRole('heading', { name: 'Write a report' })).toBeVisible();
 		await page.getByLabel('Compatibility verdict').selectOption('yes');
 		await page.getByLabel('Platform').selectOption('steam_deck');
+		await page.getByLabel('Your experience').fill('short');
+		await page.locator('form').evaluate((form) => {
+			(form as HTMLFormElement).noValidate = true;
+		});
+		await page.getByRole('button', { name: 'Submit report' }).click();
+		await expect(page.getByRole('alert')).toContainText(
+			'Check the highlighted fields and try again.'
+		);
+		await expect(page).toHaveURL(formPath);
+
 		const unsafeLookingText = `Browser journey ${suffix}: <img src=x onerror=alert(1)>`;
 		await page.getByLabel('Your experience').fill(unsafeLookingText);
 		await page.getByLabel('Proton version').fill('GE-Proton 9-20');
@@ -105,6 +115,23 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			[reportId]
 		);
 		expect(stored.rows[0]).toEqual({ author_id: userId, moderation_state: 'pending' });
+
+		await page.goto(formPath);
+		await page.getByLabel('Compatibility verdict').selectOption('yes');
+		await page.getByLabel('Platform').selectOption('steam_deck');
+		await page.getByLabel('Your experience').fill('This exact form submission was already saved.');
+		await page.locator('input[name="id"]').evaluate((input, existingId) => {
+			(input as HTMLInputElement).value = existingId;
+		}, reportId);
+		await page.getByRole('button', { name: 'Submit report' }).click();
+		await expect(page.getByRole('alert')).toContainText(
+			'This form was already submitted. Reload the page to start another report.'
+		);
+		const duplicateCount = await web.query(
+			'SELECT count(*)::int AS count FROM public.native_reports WHERE id = $1',
+			[reportId]
+		);
+		expect(duplicateCount.rows[0]?.count).toBe(1);
 
 		await page.goto(gamePath);
 		await expect(page.getByRole('heading', { name: 'Player-submitted reports' })).toBeVisible();

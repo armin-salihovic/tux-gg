@@ -7,32 +7,21 @@ import os
 import sys
 from urllib.parse import urlsplit
 
-from setup_database import _validate_role, read_env_file
+from setup_database import (
+    IMPORTER_PRIVILEGES,
+    IMPORTER_ROLE,
+    MIGRATION_ROLE,
+    WEB_PRIVILEGES,
+    WEB_ROLE,
+    _validate_role,
+    grant_native_report_insert_columns,
+    read_env_file,
+)
 
 EXPECTED_DATABASE = "tuxgg_test"
 MARKER_TABLE = "tuxgg_test_safety_marker"
 MARKER_VALUE = "tuxgg_disposable_test_database_v1"
-WEB_ROLE = "tuxgg_web"
-IMPORTER_ROLE = "tuxgg_importer"
-MIGRATION_ROLE = "tuxgg_migrator"
 ROLES = (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE)
-WEB_PRIVILEGES = {
-    "games": "SELECT",
-    "reports": "SELECT",
-    "import_batches": "SELECT",
-    "compatibility_summaries": "SELECT",
-    "native_reports": "SELECT",
-    "user": "SELECT, INSERT, UPDATE",
-    "session": "SELECT, INSERT, UPDATE, DELETE",
-    "account": "SELECT, INSERT, UPDATE, DELETE",
-    "verification": "SELECT, INSERT, UPDATE, DELETE",
-}
-IMPORTER_PRIVILEGES = {
-    "games": "SELECT, INSERT, UPDATE",
-    "reports": "SELECT, INSERT, UPDATE",
-    "import_batches": "SELECT, INSERT, UPDATE",
-    "compatibility_summaries": "SELECT, INSERT, UPDATE, DELETE",
-}
 
 
 def configure_runtime_roles(admin_url: str, test_url: str) -> None:
@@ -134,6 +123,8 @@ def configure_runtime_roles(admin_url: str, test_url: str) -> None:
                         sql.Identifier(table), sql.Identifier(IMPORTER_ROLE)
                     )
                 )
+            if table == "native_reports":
+                grant_native_report_insert_columns(cur, (WEB_ROLE,))
 
         for sequence in ("reports_id_seq", "import_batches_id_seq"):
             cur.execute("SELECT to_regclass(%s)", (f"public.{sequence}",))

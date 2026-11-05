@@ -5,6 +5,7 @@ import { canSubmitReports } from '#lib/server/authz.js';
 import { getMyNativeReports, getPublishedNativeReports } from '#lib/server/db/queries.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authUser, games, nativeReports } from '#lib/server/db/schema.js';
+import { insertNativeReport } from './native-reports.js';
 
 const enabled = process.env.NATIVE_REPORT_INTEGRATION_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL;
@@ -21,6 +22,7 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 		if (identity.rows[0]?.current_database !== 'tuxgg_test') {
 			throw new Error('Native report integration tests refused a database other than tuxgg_test.');
 		}
+		expect(identity.rows[0]?.current_user).toBe('tuxgg_web');
 		const marker = await pool.query(
 			'SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
 		);
@@ -54,14 +56,15 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 		expect(await canSubmitReports(userId)).toBe(true);
 
 		reportId = randomUUID();
-		await getDb().insert(nativeReports).values({
+		const submission = {
 			id: reportId,
 			appId: '440',
 			authorId: userId,
-			verdict: 'yes',
-			platform: 'steam_deck',
+			verdict: 'yes' as const,
+			platform: 'steam_deck' as const,
 			content: 'A pending report from the database integration test.'
-		});
+		};
+		await insertNativeReport(submission);
 		const [saved] = await getDb()
 			.select({ moderationState: nativeReports.moderationState })
 			.from(nativeReports)
@@ -75,32 +78,31 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 			reportId
 		);
 		await expect(
-			getDb().insert(nativeReports).values({
-				id: reportId,
-				appId: '440',
-				authorId: userId,
-				verdict: 'yes',
-				platform: 'steam_deck',
-				content: 'Duplicate browser request.'
-			})
+			insertNativeReport({ ...submission, content: 'Duplicate browser request.' })
 		).rejects.toMatchObject({ code: '23505' });
 
 		await expect(
-			getDb().insert(nativeReports).values({
-				id: randomUUID(),
-				appId: '440',
-				authorId: userId,
-				verdict: 'yes',
-				platform: 'linux_desktop',
-				content: 'Attempt to set server-owned moderation.',
-				moderationState: 'published'
-			})
+			pool.query(
+				'INSERT INTO public.native_reports (id, app_id, author_id, verdict, platform, content, moderation_state) ' +
+					"VALUES ($1, '440', $2, 'yes', 'linux_desktop', 'Attempt to set moderation.', 'published')",
+				[randomUUID(), userId]
+			)
+		).rejects.toMatchObject({ code: '42501' });
+		await expect(
+			pool.query(
+				'INSERT INTO public.native_reports (id, app_id, author_id, verdict, platform, content, published_at) ' +
+					"VALUES ($1, '440', $2, 'yes', 'linux_desktop', 'Attempt to publish.', now())",
+				[randomUUID(), userId]
+			)
 		).rejects.toMatchObject({ code: '42501' });
 		await expect(
 			getDb()
 				.update(nativeReports)
 				.set({ moderationState: 'published' })
 				.where(eq(nativeReports.id, reportId))
+		).rejects.toMatchObject({ code: '42501' });
+		await expect(
+			getDb().delete(nativeReports).where(eq(nativeReports.id, reportId))
 		).rejects.toMatchObject({ code: '42501' });
 	});
 

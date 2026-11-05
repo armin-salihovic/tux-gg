@@ -10,6 +10,7 @@ const queries = vi.hoisted(() => ({
 
 vi.mock('#lib/server/db/queries.js', () => queries);
 
+import { logDatabaseFailure } from '#lib/server/database-errors.js';
 import { load as loadHome } from './+page.server.js';
 import { load as loadCatalog } from './games/+page.server.js';
 import { load as loadGame } from './games/[appId]/[slug]/+page.server.js';
@@ -102,5 +103,22 @@ describe('database-backed page failures', () => {
 		expect(data.available).toBe(false);
 		expect(headers['cache-control']).toBe('private, no-store');
 		expect(logger).toHaveBeenCalledWith('[database] game detail query failed');
+	});
+
+	it('logs only the PostgreSQL code for a native report insert failure', () => {
+		logDatabaseFailure(
+			'native report submission',
+			Object.assign(new Error('query contains private report text'), {
+				code: '42501',
+				query: 'INSERT INTO native_reports ...',
+				parameters: ['private report text']
+			})
+		);
+
+		expect(logger).toHaveBeenCalledWith(
+			'[database] native report submission failed (PostgreSQL 42501)'
+		);
+		expect(JSON.stringify(logger.mock.calls)).not.toContain('private report text');
+		expect(JSON.stringify(logger.mock.calls)).not.toContain('INSERT INTO');
 	});
 });
