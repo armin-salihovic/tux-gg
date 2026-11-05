@@ -84,8 +84,10 @@ def configure_runtime_roles(admin_url: str, test_url: str) -> None:
             sql.SQL("GRANT CREATE ON SCHEMA public TO {}").format(sql.Identifier(MIGRATION_ROLE))
         )
         cur.execute(
-            sql.SQL("GRANT SELECT ON TABLE public.{} TO {}").format(
-                sql.Identifier(MARKER_TABLE), sql.Identifier(WEB_ROLE)
+            sql.SQL("GRANT SELECT ON TABLE public.{} TO {}, {}").format(
+                sql.Identifier(MARKER_TABLE),
+                sql.Identifier(WEB_ROLE),
+                sql.Identifier(MIGRATION_ROLE),
             )
         )
         cur.execute(
