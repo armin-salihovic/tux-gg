@@ -569,8 +569,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		};
 		const conflict = await submitProfile(conflictUsername[0]!.username);
 		expect(conflict).toMatchObject({ status: 409 });
-		const updated = await submitProfile(String(secondSession?.user?.username));
-		expect(updated).toMatchObject({
+		await expect(submitProfile(String(secondSession?.user?.username))).rejects.toMatchObject({
 			status: 303,
 			location: '/settings?saved=1'
 		});
