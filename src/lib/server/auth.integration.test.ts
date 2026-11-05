@@ -4,7 +4,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { getAuth } from '#lib/server/auth.js';
 import { canPublishReports } from '#lib/server/authz.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
-import { authAccount, authSession, authUser, authVerification } from '#lib/server/db/schema.js';
+import { authAccount, authSession, authUser } from '#lib/server/db/schema.js';
 import { getProfile } from '#lib/server/db/queries.js';
 import { STEAM_OPENID_NAMESPACE, STEAM_OPENID_URL } from './steam-openid.js';
 
@@ -441,12 +441,14 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		expect(noCookie.headers.get('location')).toContain('steam_state_invalid');
 
 		const expiredFlow = await beginLogin();
-		const state = new URL(expiredFlow.returnTo).searchParams.get('state')!;
-		await getDb()
-			.update(authVerification)
-			.set({ expiresAt: new Date(Date.now() - 60_000) })
-			.where(eq(authVerification.identifier, `auth-state:${state}`));
-		const expired = await finishLogin(expiredFlow);
+		const futureNow = Date.now() + 6 * 60_000;
+		const timeSpy = vi.spyOn(Date, 'now').mockReturnValue(futureNow);
+		let expired: Response;
+		try {
+			expired = await finishLogin(expiredFlow);
+		} finally {
+			timeSpy.mockRestore();
+		}
 		expect(expired.headers.get('location')).toContain('steam_state_invalid');
 
 		const replayFlow = await beginLogin();
@@ -568,7 +570,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		const conflict = await submitProfile(conflictUsername[0]!.username);
 		expect(conflict).toMatchObject({ status: 409 });
 		const updated = await submitProfile(String(secondSession?.user?.username));
-		await expect(Promise.resolve(updated)).rejects.toMatchObject({
+		expect(updated).toMatchObject({
 			status: 303,
 			location: '/settings?saved=1'
 		});
