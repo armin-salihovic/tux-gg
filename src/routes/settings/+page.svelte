@@ -14,7 +14,7 @@
 	<p class="eyebrow">Account</p>
 	<h1 class="mt-2 text-3xl font-black tracking-tight text-white">Profile settings</h1>
 	<p class="mt-2 text-sm text-muted">
-		Your username and display name appear on your public profile.
+		Your TuxGG username and display name appear on your public profile.
 	</p>
 	{#if data.saved}<div
 			role="status"
@@ -30,7 +30,7 @@
 		</div>{/if}
 	<form method="POST" action="?/profile" class="surface mt-6 space-y-5 rounded-2xl p-6">
 		<label class="block text-sm font-semibold text-slate-200" for="name"
-			>Display name<input
+			>TuxGG display name<input
 				id="name"
 				name="name"
 				required
@@ -58,13 +58,40 @@
 		>
 	</form>
 	<div class="surface mt-5 rounded-2xl p-6">
-		<h2 class="font-bold text-white">Connected accounts</h2>
-		<p class="mt-2 text-sm text-muted">
-			Discord: {data.profile.discordConnected ? 'connected' : 'not connected'}
-		</p>
-		<p class="mt-2 text-xs leading-5 text-slate-500">
-			Steam account linking is not yet implemented. Publishing compatibility reports stays disabled
-			until Steam ownership can be verified.
+		<h2 class="font-bold text-white">Steam account</h2>
+		{#if data.profile.steamConnected}
+			<div class="mt-4 flex items-center gap-4">
+				{#if data.profile.image}
+					<img class="size-14 rounded-full object-cover" src={data.profile.image} alt="" />
+				{:else}
+					<span
+						class="grid size-14 place-items-center rounded-full bg-panel-soft text-xl font-bold text-mint"
+						>{data.profile.name.slice(0, 1).toUpperCase()}</span
+					>
+				{/if}
+				<div>
+					<p class="font-semibold text-white">{data.profile.name}</p>
+					<p class="mt-1 text-xs text-muted">Steam display name</p>
+				</div>
+			</div>
+			<dl class="mt-5 grid gap-3 text-sm sm:grid-cols-[9rem_1fr]">
+				<dt class="text-muted">SteamID64</dt>
+				<dd class="font-mono text-slate-200">{data.profile.steamId}</dd>
+				<dt class="text-muted">Steam profile</dt>
+				<dd>
+					<a
+						class="text-mint hover:text-lime"
+						href={data.profile.steamProfileUrl}
+						target="_blank"
+						rel="noreferrer">Open Steam profile ↗</a
+					>
+				</dd>
+			</dl>
+		{:else}
+			<p class="mt-2 text-sm text-muted">No Steam account is connected.</p>
+		{/if}
+		<p class="mt-5 text-xs leading-5 text-slate-500">
+			Steam sign-in manages your TuxGG profile. Native report publishing remains disabled.
 		</p>
 	</div>
 	<a

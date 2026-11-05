@@ -93,11 +93,9 @@
 					alt=""
 				loading="eager"
 				fetchPriority="high"
-				class="absolute inset-0 h-full w-full"
-				imageClass="opacity-30"
+				class="w-full"
 			/>
-			<div class="absolute inset-0 bg-gradient-to-r from-base via-base/95 to-base/60"></div>
-			<div class="relative grid gap-7 p-6 sm:grid-cols-[1fr_auto] sm:items-end sm:p-10">
+			<div class="grid gap-7 p-6 sm:grid-cols-[1fr_auto] sm:items-end sm:p-10">
 				<div>
 					<p class="eyebrow">Steam app {data.game.appId} · Linux compatibility</p>
 					<h1 class="mt-3 max-w-3xl text-3xl font-black tracking-tight text-white sm:text-5xl">

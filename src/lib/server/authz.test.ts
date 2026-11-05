@@ -5,7 +5,7 @@ import { isSteamLinkedProvider, requireSteamLinkedPublisher, requireUser } from 
 describe('report publishing authorization', () => {
 	it('recognizes only a Steam account as a publishing identity', () => {
 		expect(isSteamLinkedProvider('steam')).toBe(true);
-		expect(isSteamLinkedProvider('discord')).toBe(false);
+		expect(isSteamLinkedProvider('github')).toBe(false);
 		expect(isSteamLinkedProvider(null)).toBe(false);
 	});
 

@@ -19,7 +19,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (!isAuthConfigured()) {
 		if (event.url.pathname.startsWith('/api/auth/')) {
 			return secure(
-				Response.json({ error: 'Discord sign-in is not configured.' }, { status: 503 })
+				Response.json({ error: 'Sign-in is temporarily unavailable.' }, { status: 503 })
 			);
 		}
 		return secure(applyAuthenticatedCachePolicy(await resolve(event), false, event.url.pathname));

@@ -1,133 +1,182 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { RequestEvent } from '@sveltejs/kit';
 import { getAuth } from '#lib/server/auth.js';
 import { canPublishReports } from '#lib/server/authz.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
-import { authAccount, authSession, authUser } from '#lib/server/db/schema.js';
+import { authAccount, authSession, authUser, authVerification } from '#lib/server/db/schema.js';
 import { getProfile } from '#lib/server/db/queries.js';
+import { STEAM_OPENID_NAMESPACE, STEAM_OPENID_URL } from './steam-openid.js';
 
 const enabled = process.env.AUTH_INTEGRATION_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL;
 const baseURL = process.env.BETTER_AUTH_URL ?? 'https://localhost:5173';
-const runId = `tuxgg-auth-test-${Date.now()}`;
-const profileId = {
-	first: `918273645${Date.now() % 1000}`,
-	second: `918273646${Date.now() % 1000}`
-};
-const codes = ['first-login', 'returning-login', 'matching-email', 'second-user'];
-const fakeProfiles = new Map<string, Record<string, unknown>>();
-const tokenToProfileId = new Map<string, string>();
+const runId = `tuxgg-steam-test-${Date.now()}`;
+const steamIdBlock = Math.floor(Math.random() * 10_000);
+const steamIds = [0, 1, 2, 3].map(
+	(offset) => `7656119${String((steamIdBlock + offset) % 10_000).padStart(4, '0')}000001`
+);
+let nonceSequence = 0;
+const validAssertions = new Map<string, Record<string, string>>();
 const originalFetch = globalThis.fetch;
-let loginRequestCount = 0;
+let rejectNextVerification = false;
+let steamUnavailable = false;
 let auth: ReturnType<typeof getAuth>;
+let databaseVerified = false;
 let firstUserId: string | undefined;
-let secondUserId: string | undefined;
-
-function cookiesFrom(response: Response): string {
-	const headers = response.headers.getSetCookie?.() ?? [response.headers.get('set-cookie') ?? ''];
-	return headers
-		.map((cookie) => cookie.split(';', 1)[0])
-		.filter((cookie) => cookie.startsWith('tuxgg.') || cookie.startsWith('__Secure-tuxgg.'))
-		.join('; ');
-}
+let conflictUserId: string | undefined;
 
 function setCookieHeaders(response: Response): string[] {
 	return response.headers.getSetCookie?.() ?? [response.headers.get('set-cookie') ?? ''];
 }
 
-async function beginLogin(code: string) {
-	const testClientIp = `192.0.2.${10 + loginRequestCount++}`;
+function cookiePairs(response: Response): string {
+	return setCookieHeaders(response)
+		.map((cookie) => cookie.split(';', 1)[0]!)
+		.filter((cookie) => /(?:steam_state_|session_token=)/.test(cookie))
+		.join('; ');
+}
+
+function sessionCookie(response: Response): string {
+	return (
+		setCookieHeaders(response)
+			.map((cookie) => cookie.split(';', 1)[0]!)
+			.find((cookie) => cookie.includes('session_token=')) ?? ''
+	);
+}
+
+async function beginLogin() {
 	const response = await auth.handler(
-		new Request(`${baseURL}/api/auth/sign-in/social`, {
+		new Request(`${baseURL}/api/auth/steam/login`, {
 			method: 'POST',
 			headers: {
 				'content-type': 'application/json',
 				origin: baseURL,
-				'x-forwarded-for': testClientIp
+				'x-forwarded-for': `192.0.2.${(nonceSequence++ % 200) + 1}`
 			},
-			body: JSON.stringify({
-				provider: 'discord',
-				callbackURL: '/settings',
-				disableRedirect: true
-			})
+			body: '{}'
 		})
 	);
 	expect(response.status).toBe(200);
 	const body = (await response.json()) as { url: string };
 	const authorizationURL = new URL(body.url);
-	expect(authorizationURL.origin).toBe('https://discord.com');
-	expect(authorizationURL.searchParams.get('client_id')).toBe('ci-only-client-id');
-	return {
-		code,
-		state: authorizationURL.searchParams.get('state'),
-		cookies: cookiesFrom(response)
-	};
+	expect(authorizationURL.origin).toBe('https://steamcommunity.com');
+	expect(authorizationURL.pathname).toBe('/openid/login');
+	expect(authorizationURL.searchParams.get('openid.mode')).toBe('checkid_setup');
+	const returnTo = authorizationURL.searchParams.get('openid.return_to');
+	if (!returnTo) throw new Error('Steam OpenID request did not include a return URL.');
+	return { response, authorizationURL, returnTo, cookies: cookiePairs(response) };
 }
 
-async function finishLogin(flow: Awaited<ReturnType<typeof beginLogin>>) {
-	if (!flow.state) throw new Error('Discord authorization did not include state.');
+function makeCallback(
+	flow: Awaited<ReturnType<typeof beginLogin>>,
+	options: {
+		steamId?: string;
+		claimedId?: string;
+		identity?: string;
+		returnTo?: string;
+		nonce?: string;
+		signature?: string;
+		mode?: string;
+	} = {}
+): URL {
+	const steamId = options.steamId ?? steamIds[0]!;
+	const claimedId = options.claimedId ?? `https://steamcommunity.com/openid/id/${steamId}`;
+	const nonce =
+		options.nonce ?? `${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}test-${++nonceSequence}`;
+	const signature = options.signature ?? `c2ln${String(nonceSequence).padStart(4, '0')}`;
+	const fields: Record<string, string> = {
+		'openid.ns': STEAM_OPENID_NAMESPACE,
+		'openid.mode': options.mode ?? 'id_res',
+		'openid.op_endpoint': STEAM_OPENID_URL,
+		'openid.claimed_id': claimedId,
+		'openid.identity': options.identity ?? claimedId,
+		'openid.return_to': options.returnTo ?? flow.returnTo,
+		'openid.response_nonce': nonce,
+		'openid.assoc_handle': 'mocked-steam-association',
+		'openid.signed': 'op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle',
+		'openid.sig': signature
+	};
+	validAssertions.set(signature, fields);
+	const callback = new URL(flow.returnTo);
+	for (const [key, value] of Object.entries(fields)) callback.searchParams.set(key, value);
+	return callback;
+}
+
+function startAssertion(flow: Awaited<ReturnType<typeof beginLogin>>, options = {}) {
+	return makeCallback(flow, options);
+}
+
+async function finishLogin(
+	flow: Awaited<ReturnType<typeof beginLogin>>,
+	options: {
+		steamId?: string;
+		claimedId?: string;
+		identity?: string;
+		returnTo?: string;
+		nonce?: string;
+		signature?: string;
+		mode?: string;
+	} = {},
+	cookies = flow.cookies
+) {
 	return auth.handler(
-		new Request(
-			`${baseURL}/api/auth/callback/discord?code=${encodeURIComponent(flow.code)}&state=${encodeURIComponent(flow.state)}`,
-			{ headers: { cookie: flow.cookies } }
-		)
+		new Request(startAssertion(flow, options), {
+			headers: cookies ? { cookie: cookies } : {}
+		})
 	);
 }
 
-async function getSession(
-	cookie: string
-): Promise<{ session: { id: string } | null; user: Record<string, unknown> | null } | null> {
+async function getSession(cookie: string) {
 	const response = await auth.handler(
 		new Request(`${baseURL}/api/auth/get-session`, { headers: cookie ? { cookie } : {} })
 	);
 	return (await response.json()) as {
-		session: { id: string } | null;
+		session: { id: string; expiresAt: string } | null;
 		user: Record<string, unknown> | null;
 	} | null;
 }
 
-function installDiscordMocks() {
+function installSteamMocks() {
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 			const url = new URL(
 				typeof input === 'string' ? input : input instanceof Request ? input.url : input.href
 			);
-			if (url.pathname.endsWith('/oauth2/token')) {
-				const body =
-					typeof init?.body === 'string'
-						? new URLSearchParams(init.body)
-						: init?.body instanceof URLSearchParams
-							? init.body
-							: new URLSearchParams();
-				const code = body.get('code');
-				const token = `ci-access-${code}`;
-				if (code) tokenToProfileId.set(token, code);
-				return Response.json({
-					access_token: token,
-					token_type: 'Bearer',
-					expires_in: 3600,
-					refresh_token: `ci-refresh-${code}`,
-					scope: 'identify email'
-				});
+			if (url.hostname === 'steamcommunity.com' && url.pathname === '/openid/login') {
+				if (steamUnavailable) return new Response('Steam unavailable', { status: 503 });
+				if (init?.method !== 'POST') throw new Error('Steam verification must use a POST request.');
+				const body = new URLSearchParams(String(init.body));
+				if (body.get('openid.mode') !== 'check_authentication') {
+					throw new Error('Steam verification did not use check_authentication.');
+				}
+				const signature = body.get('openid.sig') ?? '';
+				const expected = validAssertions.get(signature);
+				const signedFields = body.get('openid.signed')?.split(',') ?? [];
+				const matchesSignedAssertion =
+					expected !== undefined &&
+					signedFields.every(
+						(field) => body.get(`openid.${field}`) === expected[`openid.${field}`]
+					);
+				const accepted = matchesSignedAssertion && !rejectNextVerification;
+				rejectNextVerification = false;
+				return new Response(
+					`ns:${STEAM_OPENID_NAMESPACE}\nis_valid:${accepted ? 'true' : 'false'}\n`,
+					{ status: 200 }
+				);
 			}
-			if (decodeURIComponent(url.pathname).endsWith('/users/@me')) {
-				const token = new Headers(init?.headers).get('authorization')?.replace(/^Bearer\s+/i, '');
-				const code = token ? tokenToProfileId.get(token) : undefined;
-				const profile = code ? fakeProfiles.get(code) : undefined;
-				return profile
-					? Response.json(profile)
-					: Response.json({ message: 'Unauthorized' }, { status: 401 });
+			if (url.hostname === 'api.steampowered.com') {
+				return Response.json({ response: { players: [] } });
 			}
 			throw new Error(
-				`Unexpected network request in mocked Discord flow: ${url.hostname}${url.pathname}`
+				`Unexpected network request in mocked Steam flow: ${url.hostname}${url.pathname}`
 			);
 		})
 	);
 }
 
-describe.skipIf(!enabled)('Discord OAuth and session integration', () => {
+describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', () => {
 	beforeAll(async () => {
 		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'tuxgg_test') {
 			throw new Error('Auth integration tests require DATABASE_URL to target tuxgg_test.');
@@ -143,160 +192,269 @@ describe.skipIf(!enabled)('Discord OAuth and session integration', () => {
 		if (marker.rows[0]?.marker !== 'tuxgg_disposable_test_database_v1') {
 			throw new Error('Auth integration tests require the disposable database marker.');
 		}
-		if (process.env.DISCORD_CLIENT_ID !== 'ci-only-client-id') {
-			throw new Error('Auth integration tests require the CI-only Discord app credentials.');
-		}
+		databaseVerified = true;
 		auth = getAuth();
-		fakeProfiles.set(codes[0], {
-			id: profileId.first,
-			username: 'first-player',
-			avatar: null,
-			discriminator: '0'
-		});
-		fakeProfiles.set(codes[1], {
-			id: profileId.first,
-			username: 'renamed-on-discord',
-			global_name: 'Updated Discord Name',
-			avatar: null,
-			discriminator: '0'
-		});
-		fakeProfiles.set(codes[2], {
-			id: profileId.second,
-			username: 'same-email-player',
-			email: `${profileId.first}@discord.placeholder.local`,
-			verified: true,
-			avatar: 'avatar-hash'
-		});
-		fakeProfiles.set(codes[3], {
-			id: profileId.second,
-			username: 'second-player',
-			email: `${runId}-second@example.test`,
-			verified: true,
-			avatar: 'avatar-hash'
-		});
-		installDiscordMocks();
+		installSteamMocks();
 	});
 
 	afterAll(async () => {
 		vi.stubGlobal('fetch', originalFetch);
 		try {
-			const userIds = [firstUserId, secondUserId].filter((id): id is string => Boolean(id));
-			if (userIds.length) {
-				await getDb().delete(authUser).where(inArray(authUser.id, userIds));
+			const accounts =
+				enabled && databaseVerified
+					? await getDb()
+							.select({ userId: authAccount.userId })
+							.from(authAccount)
+							.where(
+								and(eq(authAccount.providerId, 'steam'), inArray(authAccount.accountId, steamIds))
+							)
+					: [];
+			const testUserIds = accounts.map((account) => account.userId);
+			if (conflictUserId) testUserIds.push(conflictUserId);
+			if (testUserIds.length) {
+				await getDb()
+					.delete(authUser)
+					.where(inArray(authUser.id, [...new Set(testUserIds)]));
 			}
 		} finally {
 			await closeDatabase();
 		}
 	});
 
-	it('creates accounts, blocks implicit linking, persists/revokes sessions, and protects publication', async () => {
-		const firstFlow = await beginLogin(codes[0]!);
-		const firstResponse = await finishLogin(firstFlow);
-		expect(firstResponse.status).toBe(302);
+	it('creates a Steam-only account, a Better Auth session, and a private unverified placeholder email', async () => {
+		const flow = await beginLogin();
+		const response = await finishLogin(flow, { steamId: steamIds[0] });
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toBe(`${baseURL}/settings`);
 		expect(process.env.NODE_ENV).toBe('production');
-		expect(new URL(baseURL).protocol).toBe('https:');
-		let cookie = cookiesFrom(firstResponse);
-		expect(cookie).toMatch(/tuxgg\.session_token=/);
-		const sessionCookies = setCookieHeaders(firstResponse).filter(
-			(value) =>
-				value.startsWith('tuxgg.session_token=') ||
-				value.startsWith('__Secure-tuxgg.session_token=')
+		const cookie = sessionCookie(response);
+		expect(cookie).toMatch(/(?:tuxgg|__Secure-tuxgg)\.session_token=/);
+		const sessionCookies = setCookieHeaders(response).filter((value) =>
+			value.includes('session_token=')
 		);
 		expect(sessionCookies.join('; ')).toMatch(/HttpOnly/i);
-		if (process.env.NODE_ENV === 'production') expect(sessionCookies.join('; ')).toMatch(/Secure/i);
-		const firstSession = await getSession(cookie);
-		expect(firstSession?.user?.name).toBe('first-player');
-		expect(firstSession?.user?.email).toBe(`${profileId.first}@discord.placeholder.local`);
-		firstUserId = String(firstSession?.user?.id);
-		expect(await canPublishReports(firstUserId)).toBe(false);
-		expect(JSON.stringify(firstSession)).not.toContain('ci-access-');
+		expect(sessionCookies.join('; ')).toMatch(/Secure/i);
+		expect(sessionCookies.join('; ')).toMatch(/SameSite=Lax/i);
 
-		const privateAccount = await getDb()
-			.select({ accessToken: authAccount.accessToken, refreshToken: authAccount.refreshToken })
+		const session = await getSession(cookie);
+		expect(session?.user?.name).toBe(`Steam player ${steamIds[0]!.slice(-6)}`);
+		expect(session?.user?.email).toBe(`steam-${steamIds[0]}@steam.invalid`);
+		expect(session?.user?.emailVerified).toBe(false);
+		firstUserId = String(session?.user?.id);
+		expect(await canPublishReports(firstUserId)).toBe(false);
+		expect(JSON.stringify(session)).not.toContain('accessToken');
+
+		const account = await getDb()
+			.select({
+				providerId: authAccount.providerId,
+				accountId: authAccount.accountId,
+				accessToken: authAccount.accessToken,
+				refreshToken: authAccount.refreshToken
+			})
 			.from(authAccount)
 			.where(eq(authAccount.userId, firstUserId));
-		expect(privateAccount[0]?.accessToken).toContain('ci-access-');
-		expect(JSON.stringify(await getProfile(String(firstSession?.user?.username)))).not.toContain(
-			'discord.placeholder.local'
-		);
-		expect(await getProfile(String(firstSession?.user?.username))).not.toHaveProperty('email');
-
-		const returningFlow = await beginLogin(codes[1]!);
-		const returningResponse = await finishLogin(returningFlow);
-		expect(returningResponse.status).toBe(302);
-		cookie = cookiesFrom(returningResponse);
-		const returningSession = await getSession(cookie);
-		expect(returningSession?.user?.id).toBe(firstUserId);
-		const userCount = await getDb()
-			.select({ id: authUser.id })
+		expect(account).toEqual([
+			{
+				providerId: 'steam',
+				accountId: steamIds[0],
+				accessToken: null,
+				refreshToken: null
+			}
+		]);
+		const user = await getDb()
+			.select({ emailVerified: authUser.emailVerified, username: authUser.username })
 			.from(authUser)
 			.where(eq(authUser.id, firstUserId));
-		expect(userCount).toHaveLength(1);
+		expect(user[0]?.username).toMatch(/^[a-z0-9][a-z0-9_-]{2,23}$/);
+		expect(user[0]?.emailVerified).toBe(false);
+		const publicProfile = await getProfile(user[0]!.username);
+		expect(publicProfile).not.toHaveProperty('email');
+		expect(JSON.stringify(publicProfile)).not.toContain('@steam.invalid');
+	});
 
-		const invalidResponse = await auth.handler(
-			new Request(`${baseURL}/api/auth/callback/discord?code=invalid&state=invalid-state`)
-		);
-		expect(invalidResponse.status).toBe(302);
-		expect(invalidResponse.headers.get('location')).toContain('error=');
-
-		const linkedFlow = await beginLogin(codes[2]!);
-		const linkedResponse = await finishLogin(linkedFlow);
-		expect(linkedResponse.status).toBe(302);
-		expect(linkedResponse.headers.get('location')).toContain('error=');
-		const firstAccount = await getDb()
+	it('signs returning Steam users into the same account without duplicates', async () => {
+		const flow = await beginLogin();
+		const response = await finishLogin(flow, { steamId: steamIds[0] });
+		const session = await getSession(sessionCookie(response));
+		expect(session?.user?.id).toBe(firstUserId);
+		const accounts = await getDb()
 			.select({ id: authAccount.id })
 			.from(authAccount)
-			.where(eq(authAccount.userId, firstUserId));
-		expect(firstAccount).toHaveLength(1);
+			.where(eq(authAccount.accountId, steamIds[0]!));
+		expect(accounts).toHaveLength(1);
+	});
 
-		const secondFlow = await beginLogin(codes[3]!);
-		const secondResponse = await finishLogin(secondFlow);
-		expect(secondResponse.status).toBe(302);
-		const secondCookie = cookiesFrom(secondResponse);
-		const secondSession = await getSession(secondCookie);
-		expect(secondSession?.user?.id).toBeTruthy();
-		secondUserId = String(secondSession?.user?.id);
-		expect(secondUserId).not.toBe(firstUserId);
-		expect(await canPublishReports(secondUserId)).toBe(false);
+	it('does not merge an existing user by the internal placeholder email', async () => {
+		const steamId = steamIds[2]!;
+		const email = `steam-${steamId}@steam.invalid`;
+		const username = `${runId.slice(-12)}-old`;
+		const [user] = await getDb()
+			.insert(authUser)
+			.values({ id: `${runId}-old`, name: 'Old account', email, username })
+			.returning({ id: authUser.id });
+		conflictUserId = user!.id;
+		const flow = await beginLogin();
+		const response = await finishLogin(flow, { steamId });
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toContain('/login?error=steam_account_unavailable');
+		const account = await getDb()
+			.select({ id: authAccount.id })
+			.from(authAccount)
+			.where(eq(authAccount.accountId, steamId));
+		expect(account).toHaveLength(0);
+	});
 
-		const duplicateUsername = await getDb()
+	it('rejects forged identities and invalid OpenID signatures server-side', async () => {
+		const flow = await beginLogin();
+		const validButForgedId = '76561198999999999';
+		const forged = await finishLogin(flow, {
+			steamId: validButForgedId,
+			claimedId: `https://steamcommunity.com/openid/id/${validButForgedId}`,
+			identity: `https://steamcommunity.com/openid/id/${validButForgedId}`
+		});
+		expect(forged.status).toBe(302);
+		expect(forged.headers.get('location')).toContain('steam_verification_failed');
+		expect(sessionCookie(forged)).toBe('');
+
+		const malformedFlow = await beginLogin();
+		const malformed = await finishLogin(malformedFlow, {
+			claimedId: 'https://steamcommunity.com/openid/id/not-a-steamid'
+		});
+		expect(malformed.status).toBe(302);
+		expect(malformed.headers.get('location')).toContain('steam_verification_failed');
+	});
+
+	it('rejects an incorrect callback URL before sending the assertion to Steam', async () => {
+		const flow = await beginLogin();
+		const response = await finishLogin(flow, { returnTo: 'https://attacker.invalid/callback' });
+		expect(response.headers.get('location')).toContain('steam_verification_failed');
+	});
+
+	it('binds each login to the browser and rejects expired or replayed state', async () => {
+		const missingCookieFlow = await beginLogin();
+		const noCookie = await finishLogin(missingCookieFlow, {}, '');
+		expect(noCookie.headers.get('location')).toContain('steam_state_invalid');
+
+		const expiredFlow = await beginLogin();
+		const state = new URL(expiredFlow.returnTo).searchParams.get('state')!;
+		await getDb()
+			.update(authVerification)
+			.set({ expiresAt: new Date(Date.now() - 60_000) })
+			.where(eq(authVerification.identifier, `auth-state:${state}`));
+		const expired = await finishLogin(expiredFlow);
+		expect(expired.headers.get('location')).toContain('steam_state_invalid');
+
+		const replayFlow = await beginLogin();
+		const accepted = await finishLogin(replayFlow);
+		expect(accepted.status).toBe(302);
+		const replayed = await finishLogin(replayFlow);
+		expect(replayed.headers.get('location')).toContain('steam_state_invalid');
+		expect(sessionCookie(replayed)).toBe('');
+	});
+
+	it('prevents a Steam OpenID response nonce from being replayed across login states', async () => {
+		const nonce = `${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}shared-nonce`;
+		const firstFlow = await beginLogin();
+		const first = await finishLogin(firstFlow, { steamId: steamIds[1], nonce });
+		expect(first.status).toBe(302);
+		const secondFlow = await beginLogin();
+		const replay = await finishLogin(secondFlow, { steamId: steamIds[1], nonce });
+		expect(replay.headers.get('location')).toContain('steam_verification_failed');
+		expect(sessionCookie(replay)).toBe('');
+	});
+
+	it('handles simultaneous callbacks for one SteamID without creating duplicate users', async () => {
+		const firstFlow = await beginLogin();
+		const secondFlow = await beginLogin();
+		const [first, second] = await Promise.all([
+			finishLogin(firstFlow, { steamId: steamIds[3] }),
+			finishLogin(secondFlow, { steamId: steamIds[3] })
+		]);
+		const firstSession = await getSession(sessionCookie(first));
+		const secondSession = await getSession(sessionCookie(second));
+		expect(first.status).toBe(302);
+		expect(second.status).toBe(302);
+		expect(firstSession?.user?.id).toBeTruthy();
+		expect(secondSession?.user?.id).toBe(firstSession?.user?.id);
+		const users = await getDb()
+			.select({ id: authUser.id })
+			.from(authAccount)
+			.innerJoin(authUser, eq(authUser.id, authAccount.userId))
+			.where(eq(authAccount.accountId, steamIds[3]!));
+		expect(users).toHaveLength(1);
+	});
+
+	it('generates distinct usernames for identical Steam display names', async () => {
+		const firstFlow = await beginLogin();
+		const first = await finishLogin(firstFlow, { steamId: steamIds[0] });
+		const secondFlow = await beginLogin();
+		const second = await finishLogin(secondFlow, { steamId: steamIds[1] });
+		const firstSession = await getSession(sessionCookie(first));
+		const secondSession = await getSession(sessionCookie(second));
+		expect(firstSession?.user?.name).toBe(secondSession?.user?.name);
+		expect(firstSession?.user?.username).not.toBe(secondSession?.user?.username);
+	});
+
+	it('continues when Steam verification is unavailable and still does not create a session', async () => {
+		const flow = await beginLogin();
+		steamUnavailable = true;
+		const response = await finishLogin(flow, { steamId: steamIds[2] });
+		steamUnavailable = false;
+		expect(response.status).toBe(302);
+		expect(response.headers.get('location')).toContain('steam_verification_failed');
+		expect(sessionCookie(response)).toBe('');
+	});
+
+	it('supports profile updates and keeps publishing disabled', async () => {
+		const firstFlow = await beginLogin();
+		const firstResponse = await finishLogin(firstFlow, { steamId: steamIds[0] });
+		const firstSession = await getSession(sessionCookie(firstResponse));
+		firstUserId = String(firstSession?.user?.id);
+		const conflictUsername = await getDb()
 			.select({ username: authUser.username })
 			.from(authUser)
 			.where(eq(authUser.id, firstUserId));
+		const secondFlow = await beginLogin();
+		const secondResponse = await finishLogin(secondFlow, { steamId: steamIds[1] });
+		const secondSession = await getSession(sessionCookie(secondResponse));
+		const secondUserId = String(secondSession?.user?.id);
+		expect(await canPublishReports(secondUserId)).toBe(false);
 		const { actions } = await import('../../routes/settings/+page.server.js');
-		const submitProfile = async (name: string, username: string) => {
+		const submitProfile = async (username: string) => {
 			const form = new FormData();
-			form.set('name', name);
+			form.set('name', 'Updated TuxGG Display Name');
 			form.set('username', username);
-			const request = new Request(`${baseURL}/settings`, { method: 'POST', body: form });
 			const event = {
 				locals: {
-					user: { id: secondUserId!, name: 'Second User', username: 'second-player', image: null },
+					user: {
+						id: secondUserId,
+						name: 'Steam player 000001',
+						username: String(secondSession?.user?.username),
+						image: null
+					},
 					session: { id: 'test-session', expiresAt: new Date(Date.now() + 60_000) }
 				},
-				request
+				request: new Request(`${baseURL}/settings`, { method: 'POST', body: form })
 			} as RequestEvent;
 			return actions.profile(event as unknown as Parameters<typeof actions.profile>[0]);
 		};
-		const conflict = await submitProfile('Second User', duplicateUsername[0]!.username);
+		const conflict = await submitProfile(conflictUsername[0]!.username);
 		expect(conflict).toMatchObject({ status: 409 });
-		await expect(
-			submitProfile('Updated Profile Name', 'second-player-updated')
-		).rejects.toMatchObject({
+		const updated = await submitProfile(String(secondSession?.user?.username));
+		await expect(Promise.resolve(updated)).rejects.toMatchObject({
 			status: 303,
 			location: '/settings?saved=1'
 		});
-		const updatedProfile = await getDb()
-			.select({ name: authUser.name, username: authUser.username })
-			.from(authUser)
-			.where(eq(authUser.id, secondUserId));
-		expect(updatedProfile[0]).toEqual({
-			name: 'Updated Profile Name',
-			username: 'second-player-updated'
-		});
+		const publicProfile = await getProfile(String(secondSession?.user?.username));
+		expect(publicProfile?.name).toBe('Updated TuxGG Display Name');
+	});
 
-		const expiry = await getSession(cookie);
-		const sessionId = expiry?.session?.id;
+	it('expires Better Auth sessions and logs out through Better Auth', async () => {
+		const flow = await beginLogin();
+		const signedIn = await finishLogin(flow, { steamId: steamIds[0] });
+		const cookie = sessionCookie(signedIn);
+		const session = await getSession(cookie);
+		const sessionId = session?.session?.id;
 		expect(sessionId).toBeTruthy();
 		await getDb()
 			.update(authSession)
@@ -304,16 +462,16 @@ describe.skipIf(!enabled)('Discord OAuth and session integration', () => {
 			.where(eq(authSession.id, sessionId!));
 		expect(await getSession(cookie)).toBeNull();
 
-		const logoutFlow = await beginLogin(codes[1]!);
-		const logoutResponse = await finishLogin(logoutFlow);
-		const logoutCookie = cookiesFrom(logoutResponse);
-		const signOutResponse = await auth.handler(
+		const logoutFlow = await beginLogin();
+		const logoutSignIn = await finishLogin(logoutFlow, { steamId: steamIds[0] });
+		const logoutCookie = sessionCookie(logoutSignIn);
+		const signOut = await auth.handler(
 			new Request(`${baseURL}/api/auth/sign-out`, {
 				method: 'POST',
 				headers: { cookie: logoutCookie, origin: baseURL }
 			})
 		);
-		expect(signOutResponse.status).toBe(200);
+		expect(signOut.status).toBe(200);
 		expect(await getSession(logoutCookie)).toBeNull();
 	});
 });

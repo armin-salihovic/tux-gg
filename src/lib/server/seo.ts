@@ -5,7 +5,7 @@ function siteOrigin(): string {
 		if (NODE_ENV === 'production') {
 			throw new Error('PUBLIC_SITE_URL must be configured to generate production canonical URLs.');
 		}
-		return 'http://localhost:5173';
+		return 'http://localhost';
 	}
 	const parsed = new URL(PUBLIC_SITE_URL);
 	if (

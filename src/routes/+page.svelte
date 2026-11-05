@@ -181,8 +181,8 @@
 		<p class="eyebrow !text-lime">Community reports</p>
 		<h2 class="mt-3 text-2xl font-extrabold tracking-tight text-white">Your setup matters.</h2>
 		<p class="mt-3 text-sm leading-7 text-slate-300">
-			Discord sign-in is available for account profiles. Publishing reports is disabled until Steam
-			account linking is implemented and verified.
+			Steam sign-in creates your TuxGG account. Native report publishing stays disabled because
+			Steam identity alone does not verify ownership of a particular game.
 		</p>
 		<a
 			class="mt-6 inline-flex items-center gap-2 text-sm font-bold text-lime hover:text-mint"

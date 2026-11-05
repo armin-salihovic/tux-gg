@@ -6,8 +6,8 @@
 		{
 			title: 'Account information',
 			paragraphs: [
-				'If you sign in with Discord, TuxGG stores the account information needed to create and maintain your profile, including a display name, username, profile image, and the private OAuth account/session records required for authentication. Your email address and OAuth tokens are not shown on public profiles.',
-				'Discord sign-in requests identity and email scopes for account setup. A Discord account without a returned email uses a private placeholder address in the authentication database; that address is not displayed or used for email.'
+				'If you sign in through Steam OpenID, TuxGG stores your SteamID64, a display name, username, optional profile image, and the private account/session records required for authentication. Steam does not provide a verified email address. TuxGG uses a private placeholder address internally; it is not verified, displayed, or used for email or account linking.',
+				'TuxGG may use an optional server-side Steam Web API key to retrieve public profile details. Steam authentication is verified separately through Steam OpenID.'
 			]
 		},
 		{

@@ -42,7 +42,8 @@
 			{#if user}
 				<a
 					class="flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-sm text-slate-200 transition hover:border-mint/40"
-					href="/settings"
+					href={`/users/${user.username}`}
+					aria-label={`View ${user.name} profile`}
 				>
 					{#if user.image}
 						<img
@@ -59,6 +60,10 @@
 					{/if}
 					<span>{user.name}</span>
 				</a>
+				<a
+					class="rounded-full px-3 py-2 text-sm text-slate-300 transition hover:text-mint"
+					href="/settings">Settings</a
+				>
 				<button
 					class="rounded-full px-3 py-2 text-sm text-slate-400 transition hover:text-white"
 					onclick={signOut}>Log out</button
@@ -66,7 +71,7 @@
 			{:else}
 				<a
 					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-mint/50 hover:text-mint"
-					href="/login">Log in</a
+					href="/login">Sign in</a
 				>
 			{/if}
 		</div>
@@ -110,7 +115,7 @@
 				<a
 					class="rounded-lg px-3 py-2 text-slate-200 hover:bg-white/5"
 					href="/settings"
-					onclick={() => (menuOpen = false)}>Account settings</a
+					onclick={() => (menuOpen = false)}>{user.name} · Settings</a
 				>
 				<button
 					class="rounded-lg px-3 py-2 text-left text-slate-200 hover:bg-white/5"
@@ -120,7 +125,7 @@
 				<a
 					class="rounded-lg px-3 py-2 text-mint hover:bg-white/5"
 					href="/login"
-					onclick={() => (menuOpen = false)}>Log in with Discord</a
+					onclick={() => (menuOpen = false)}>Sign in</a
 				>
 			{/if}
 		</nav>

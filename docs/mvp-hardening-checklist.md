@@ -42,12 +42,12 @@ This checklist tracks the implementation request in the TuxGG workspace. “Impl
 - [x] Seed deterministic Steam app fixtures for browser tests; verify image success, 404/network fallbacks, layout dimensions, lazy/eager loading, and branded social metadata.
 - [x] Separate web, importer, and migration roles with table-specific grants and a `tuxgg_app` compatibility transition.
 - [x] Document data licenses, Steam artwork limitations, missing operator/contact details, and public-launch requirements.
-- [x] Cover first and returning Discord sign-in, mocked callbacks, internal account creation, sessions, expiry/logout, invalid state, missing optional profile fields, duplicate-email linking restrictions, profile changes, secure cookie flags, protected routes, and publishing denial with isolated mocked-provider tests.
-- [ ] Run one live Discord OAuth flow with deployment credentials after callback URI and production HTTPS settings are configured.
+- [x] Cover first and returning Steam sign-in, mocked OpenID callbacks, internal account creation, sessions, expiry/logout, invalid and expired state, replay protection, profile fallback, duplicate Steam IDs, profile changes, secure cookie flags, protected routes, and publishing denial with isolated mocked-provider tests.
+- [ ] Run one live Steam OpenID flow after the public HTTPS origin is configured.
 - [x] Verify effective Compose environment and healthy production-container startup against a disposable PostgreSQL instance.
 
 ## External launch decisions
 
 - [ ] Obtain or confirm rights to display Steam/publisher artwork on a public third-party site.
-- [ ] Configure the public operator identity, jurisdiction, monitored contact address, HTTPS origin, Discord credentials, and production secret storage.
+- [ ] Configure the public operator identity, jurisdiction, monitored contact address, HTTPS origin, Better Auth secret, and production secret storage.
 - [ ] Review imported report redistribution and derived-database obligations under ODbL 1.0 and DbCL 1.0 with the deployment operator.

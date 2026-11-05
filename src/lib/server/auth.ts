@@ -2,24 +2,17 @@ import {
 	BETTER_AUTH_SECRET,
 	BETTER_AUTH_URL,
 	DATABASE_URL,
-	DISCORD_CLIENT_ID,
-	DISCORD_CLIENT_SECRET,
+	STEAM_API_KEY,
 	NODE_ENV
 } from '$app/env/private';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { authAccount, authSession, authUser, authVerification } from '#lib/server/db/schema.js';
 import { getDb } from '#lib/server/db/db.js';
-import { ACCOUNT_LINKING_OPTIONS, mapDiscordProfile } from '#lib/server/auth-profile.js';
+import { steamOpenID } from '#lib/server/steam-auth.js';
 
 export function isAuthConfigured(): boolean {
-	return Boolean(
-		DATABASE_URL &&
-		BETTER_AUTH_SECRET &&
-		BETTER_AUTH_URL &&
-		DISCORD_CLIENT_ID &&
-		DISCORD_CLIENT_SECRET
-	);
+	return Boolean(DATABASE_URL && BETTER_AUTH_SECRET && BETTER_AUTH_URL);
 }
 
 function createAuth() {
@@ -42,16 +35,9 @@ function createAuth() {
 			}
 		},
 		account: {
-			accountLinking: ACCOUNT_LINKING_OPTIONS
+			accountLinking: { enabled: true, disableImplicitLinking: true }
 		},
-		socialProviders: {
-			discord: {
-				clientId: DISCORD_CLIENT_ID!,
-				clientSecret: DISCORD_CLIENT_SECRET!,
-				scope: ['identify', 'email'],
-				mapProfileToUser: mapDiscordProfile
-			}
-		},
+		plugins: [steamOpenID(STEAM_API_KEY)],
 		session: {
 			expiresIn: 60 * 60 * 24 * 30,
 			updateAge: 60 * 60 * 24
@@ -69,7 +55,7 @@ let instance: AuthInstance | undefined;
 export function getAuth(): AuthInstance {
 	if (!isAuthConfigured()) {
 		throw new Error(
-			'Discord sign-in is not configured. Set the Better Auth and Discord environment variables.'
+			'Sign-in is not configured. Set DATABASE_URL, BETTER_AUTH_URL, and BETTER_AUTH_SECRET.'
 		);
 	}
 	return (instance ??= createAuth());

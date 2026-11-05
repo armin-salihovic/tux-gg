@@ -5,9 +5,12 @@
 1. Set `PGADMIN_URL` to an administrator connection on the `postgres` maintenance database. Keep it on the deployment host and run `pnpm db:setup` once. Setup creates `tuxgg_web`, `tuxgg_importer`, and `tuxgg_migrator`, and changes schema privileges only after connecting to `tuxgg`.
 2. Run `pnpm db:migrate` with the generated `MIGRATION_DATABASE_URL`, then run `pnpm db:grant` to apply the reviewed table grants. Repeat the grant command after each migration that adds tables.
 3. Import and inspect the local corpus using `IMPORTER_DATABASE_URL`. Do not pass importer or migration credentials to the web container. Do not add source archives or private `.env` files to the container image.
-4. Set a random `BETTER_AUTH_SECRET` of at least 32 bytes, Discord OAuth credentials, the exact HTTPS `BETTER_AUTH_URL`, canonical `PUBLIC_SITE_URL`, and the externally visible `ORIGIN`.
+4. Set a random `BETTER_AUTH_SECRET` of at least 32 bytes, the exact HTTPS `BETTER_AUTH_URL`, canonical `PUBLIC_SITE_URL`, and the externally visible `ORIGIN`. `STEAM_API_KEY` is optional and is used only to retrieve public Steam profile details.
 5. Set `PUBLIC_CONTACT_EMAIL` to a monitored address and replace example operator/legal details before opening the service publicly.
-6. Register `${BETTER_AUTH_URL}/api/auth/callback/discord` as the Discord application's OAuth redirect URI.
+
+Steam OpenID does not use a client ID, client secret, or OAuth registration. The callback URL is `${BETTER_AUTH_URL}/api/auth/steam/callback`; the sign-in request uses the origin root as its OpenID realm. The server validates both values against the configured origin. To test a live login, run the site over HTTPS in production or use `http://localhost` for local development, set `BETTER_AUTH_URL` and `ORIGIN` to the externally visible origin, then use **Sign in through Steam**. Automated tests mock Steam and need no Steam credentials.
+
+This Steam integration reuses the existing Better Auth user, account, session, and verification tables and does not add a migration. Apply only reviewed incremental migrations already required by the deployment; never reset the database or Better Auth tables for authentication setup.
 
 ## Docker Compose
 

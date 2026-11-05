@@ -20,7 +20,7 @@
 		{
 			title: 'Community reports',
 			paragraphs: [
-				'Discord sign-in supports a public account profile. Publishing native reports is disabled until Steam account linking can verify game ownership. The database keeps a separate model for future native reports so those contributions will remain distinct from imported ProtonDB reports.'
+				'Steam OpenID sign-in supports a public account profile. Publishing native reports is disabled because Steam identity alone does not verify ownership of a particular game. The database keeps a separate model for future native reports so those contributions will remain distinct from imported ProtonDB reports.'
 			]
 		}
 	];

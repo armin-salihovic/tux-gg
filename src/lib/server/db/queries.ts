@@ -427,10 +427,18 @@ export async function getSettingsProfile(userId: string) {
 		.limit(1);
 	if (!user) return null;
 	const linked = await db
-		.select({ providerId: authAccount.providerId })
+		.select({ providerId: authAccount.providerId, accountId: authAccount.accountId })
 		.from(authAccount)
 		.where(eq(authAccount.userId, userId));
-	return { ...user, discordConnected: linked.some((account) => account.providerId === 'discord') };
+	const steamAccount = linked.find((account) => account.providerId === 'steam');
+	return {
+		...user,
+		steamConnected: Boolean(steamAccount),
+		steamId: steamAccount?.accountId ?? null,
+		steamProfileUrl: steamAccount
+			? `https://steamcommunity.com/profiles/${steamAccount.accountId}/`
+			: null
+	};
 }
 
 export async function getSitemapGames(offset: number, limit: number) {

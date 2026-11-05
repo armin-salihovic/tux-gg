@@ -9,6 +9,30 @@ test('homepage renders search and security headers without a database', async ({
 	await expect(page.getByRole('link', { name: /browse the catalog/i })).toBeVisible();
 });
 
+test('login page offers Steam-only sign-in and reports startup errors', async ({ page }) => {
+	await page.route('**/api/auth/steam/login', async (route) => {
+		await route.fulfill({
+			status: 503,
+			contentType: 'application/json',
+			body: '{"error":"unavailable"}'
+		});
+	});
+	await page.goto('/login');
+	await expect(page.getByRole('heading', { name: 'Sign in through Steam' })).toBeVisible();
+	await expect(
+		page.getByText(
+			'Sign in securely with your Steam account to create or access your TuxGG profile.'
+		)
+	).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Sign in through Steam' })).toBeVisible();
+	await expect(page.getByRole('button', { name: /discord/i })).toHaveCount(0);
+	await expect(
+		page.getByRole('link', { name: /continue browsing without signing in/i })
+	).toHaveAttribute('href', '/games');
+	await page.getByRole('button', { name: 'Sign in through Steam' }).click();
+	await expect(page.getByRole('alert')).toContainText('Steam sign-in could not start');
+});
+
 test('public policy pages are available and robots lists the sitemap', async ({ page }) => {
 	await page.goto('/methodology');
 	await expect(page.getByRole('heading', { name: 'TuxGG rating methodology' })).toBeVisible();
@@ -55,11 +79,14 @@ test('game pages render canonical Steam artwork and match sitemap indexability',
 	await expect(
 		page.locator('img[src*="shared.fastly.steamstatic.com"][src*="/440/header.jpg"]')
 	).toHaveCount(1);
-	await expect(page.locator('img[src*="/440/header.jpg"]')).toHaveAttribute('loading', 'eager');
-	await expect(page.locator('img[src*="/440/header.jpg"]')).toHaveAttribute(
-		'fetchpriority',
-		'high'
-	);
+	const heroArtwork = page.locator('img[src*="/440/header.jpg"]');
+	await expect(heroArtwork).toHaveAttribute('loading', 'eager');
+	await expect(heroArtwork).toHaveAttribute('fetchpriority', 'high');
+	await expect
+		.poll(() => heroArtwork.evaluate((image: HTMLImageElement) => image.naturalWidth))
+		.toBe(460);
+	expect(await heroArtwork.evaluate((image) => getComputedStyle(image).opacity)).toBe('1');
+	expect(await heroArtwork.evaluate((image) => image.className)).not.toContain('opacity-');
 	await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
 
 	const sparseResponse = await page.goto('/games/730/counter-strike-2');

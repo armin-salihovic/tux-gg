@@ -12,7 +12,7 @@
 		{
 			title: 'Third-party services and data',
 			paragraphs: [
-				'Discord sign-in is provided by Discord. Imported report data is attributed to ProtonDB and remains subject to the source database and content licenses. Steam store links are provided for convenience. Third-party services have their own terms and privacy practices.'
+				'Steam OpenID sign-in is provided by Steam. Imported report data is attributed to ProtonDB and remains subject to the source database and content licenses. Steam store links are provided for convenience. Third-party services have their own terms and privacy practices.'
 			]
 		},
 		{
