@@ -12,6 +12,8 @@ Steam OpenID does not use a client ID, client secret, or OAuth registration. The
 
 This Steam integration reuses the existing Better Auth user, account, session, and verification tables and does not add a migration. Apply only reviewed incremental migrations already required by the deployment; never reset the database or Better Auth tables for authentication setup.
 
+For an existing installation whose grants were applied by an earlier version of the setup script, review `PGADMIN_URL` and run `pnpm db:grant` once to restore the migration owner's table privileges needed for PostgreSQL foreign-key checks. This grant-only command does not change credentials or table data. Do not rerun `pnpm db:setup` for this correction; it is not required for new credentials or a database reset.
+
 ## Docker Compose
 
 Copy `.env.production.example` to `.env`, fill in the secrets and generated database URLs, then run:
