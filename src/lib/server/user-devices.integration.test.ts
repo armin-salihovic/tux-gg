@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { parseSteamSystemInfo } from '#lib/steam-system-info.js';
 import { closeDatabase, getPool } from '#lib/server/db/db.js';
 import { authUser } from '#lib/server/db/schema.js';
 import { getDb } from '#lib/server/db/db.js';
@@ -10,7 +11,9 @@ import {
 	getUserDevice,
 	listUserDevices,
 	setDefaultUserDevice,
-	updateUserDevice
+	updateUserDevice,
+	DeviceLimitError,
+	listEligibleUserDevices
 } from './user-devices.js';
 
 const enabled = process.env.NATIVE_REPORT_INTEGRATION_TESTS === '1';
@@ -48,22 +51,14 @@ describe.skipIf(!enabled)('saved device PostgreSQL integration', () => {
 					username: `other-${suffix.slice(0, 18)}`
 				}
 			]);
-		const base = {
-			name: 'Gaming PC',
-			deviceType: 'linux_desktop' as const,
-			cpu: 'AMD Ryzen 7 9800X3D',
-			gpu: 'AMD Radeon RX 9070 XT',
-			gpuVendor: 'AMD' as const,
-			ram: '30.5 GB',
-			distribution: 'CachyOS',
-			kernel: '7.3',
-			graphicsDriver: 'Mesa 26.2.6-arch3.1',
-			gpuDriverDetail: 'radeonsi'
-		};
-		const firstId = await createUserDevice(userId, base);
+		const systemInfo = `Computer Information:\nManufacturer: Gigabyte\nModel: B850M\nProcessor Information:\nCPU Brand: AMD Ryzen 7 9800X3D 8-Core Processor\nOperating System:\nCachyOS\nKernel Name: Linux\nKernel Version: 7.3\nVideo Card:\nDriver: AMD AMD Radeon RX 9070 XT (radeonsi)\nDriver Version: Mesa 26.2.6-arch3.1\nMemory:\nRAM: 31188 Mb`;
+		const parsed = parseSteamSystemInfo(systemInfo);
+		if (!parsed.ok) throw new Error('The test Steam fixture must be supported.');
+		const base = parsed.value;
+		const firstId = await createUserDevice(userId, 'Gaming PC', base);
 		const [secondId, thirdId] = await Promise.all([
-			createUserDevice(userId, { ...base, name: 'Gaming Laptop' }),
-			createUserDevice(userId, { ...base, name: 'Living Room PC' })
+			createUserDevice(userId, 'Gaming Laptop', base),
+			createUserDevice(userId, 'Living Room PC', base)
 		]);
 		const devices = await listUserDevices(userId);
 		expect(devices).toHaveLength(3);
@@ -71,7 +66,7 @@ describe.skipIf(!enabled)('saved device PostgreSQL integration', () => {
 		expect(await listUserDevices(otherId)).toEqual([]);
 		expect(await getUserDevice(otherId, firstId)).toBeUndefined();
 		await expect(
-			updateUserDevice(otherId, firstId, { ...base, name: 'Changed by another user' })
+			updateUserDevice(otherId, firstId, 'Changed by another user')
 		).rejects.toBeInstanceOf(DeviceNotFoundError);
 		await expect(setDefaultUserDevice(otherId, firstId)).rejects.toBeInstanceOf(
 			DeviceNotFoundError
@@ -84,14 +79,16 @@ describe.skipIf(!enabled)('saved device PostgreSQL integration', () => {
 				.filter((device) => device.isDefault)
 				.map((device) => device.id)
 		).toEqual([secondId]);
-		await updateUserDevice(userId, firstId, {
-			...base,
-			name: 'Updated Gaming PC',
-			gpu: 'AMD Radeon RX 10070 XT'
-		});
+		const refreshed = parseSteamSystemInfo(
+			systemInfo.replace('RX 9070 XT', 'RX 10070 XT').replace('Ryzen 7 9800X3D', 'Ryzen 9 9900X')
+		);
+		if (!refreshed.ok) throw new Error('The refreshed Steam fixture must be supported.');
+		await updateUserDevice(userId, firstId, 'Updated Gaming PC', refreshed.value);
 		expect(await getUserDevice(userId, firstId)).toMatchObject({
 			name: 'Updated Gaming PC',
-			gpu: 'AMD Radeon RX 10070 XT'
+			gpu: 'AMD Radeon RX 10070 XT',
+			cpu: 'AMD Ryzen 9 9900X',
+			sourceVerifiedAt: expect.any(Date)
 		});
 
 		await deleteUserDevice(userId, secondId);
@@ -115,6 +112,24 @@ describe.skipIf(!enabled)('saved device PostgreSQL integration', () => {
 			can_delete: true,
 			can_write_imported_reports: false,
 			can_edit_summaries: false
+		});
+
+		for (let index = 0; index < 10; index++) {
+			await createUserDevice(otherId, `Gaming system ${index + 1}`, base);
+		}
+		await expect(createUserDevice(otherId, 'Eleventh system', base)).rejects.toBeInstanceOf(
+			DeviceLimitError
+		);
+		const legacyId = randomUUID();
+		await pool.query(
+			`INSERT INTO public.user_devices (id, user_id, name, device_type, cpu, gpu, is_default)
+			 VALUES ($1, $2, 'Old manual device', 'linux_desktop', 'Old manual CPU', 'Old manual GPU', false)`,
+			[legacyId, otherId]
+		);
+		expect((await listEligibleUserDevices(otherId)).map((device) => device.id)).toHaveLength(10);
+		expect(await getUserDevice(otherId, legacyId)).toMatchObject({
+			cpu: 'Old manual CPU',
+			sourceVerifiedAt: null
 		});
 	});
 

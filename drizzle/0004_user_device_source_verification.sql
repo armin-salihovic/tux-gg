@@ -1,0 +1,1 @@
+ALTER TABLE "user_devices" ADD COLUMN "source_verified_at" timestamp with time zone;

@@ -19,7 +19,7 @@ import {
 	insertNativeReportForDevice,
 	SelectedDeviceNotFoundError
 } from '#lib/server/native-reports.js';
-import { listUserDevices } from '#lib/server/user-devices.js';
+import { listEligibleUserDevices, listUserDevices } from '#lib/server/user-devices.js';
 
 const appIdPattern = /^\d{1,20}$/;
 
@@ -64,9 +64,13 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
 	if (!(await canSubmitReports(locals.user.id))) {
 		error(403, 'A Steam-linked account is required to submit compatibility reports.');
 	}
+	let allDevices;
 	let devices;
 	try {
-		devices = await listUserDevices(locals.user.id);
+		[allDevices, devices] = await Promise.all([
+			listUserDevices(locals.user.id),
+			listEligibleUserDevices(locals.user.id)
+		]);
 	} catch {
 		error(503, 'Your saved devices are temporarily unavailable. Please try again.');
 	}
@@ -74,6 +78,8 @@ export const load: PageServerLoad = async ({ params, locals, url, setHeaders }) 
 		game,
 		submissionId: randomUUID(),
 		devices,
+		hasUnverifiedDevices: devices.length === 0 && allDevices.length > 0,
+		reimportDeviceId: devices.length === 0 ? (allDevices[0]?.id ?? null) : null,
 		returnTo: safeDeviceReturnPath(url.pathname) ?? `/games/${game.appId}/${game.slug}/report/new`
 	};
 };
@@ -89,6 +95,22 @@ export const actions: Actions = {
 
 		const formData = await request.formData();
 		const values = returnedValues(formData);
+		let eligibleDevices;
+		try {
+			eligibleDevices = await listEligibleUserDevices(locals.user.id);
+		} catch {
+			return fail(503, {
+				values,
+				formError: 'Your verified devices are temporarily unavailable. Please try again.'
+			});
+		}
+		if (eligibleDevices.length === 0) {
+			return fail(403, {
+				values,
+				formError:
+					'Add a Linux PC or Steam Deck with validated Steam System Information before submitting a compatibility report.'
+			});
+		}
 		const parsed = nativeReportSchema.safeParse(Object.fromEntries(formData));
 		if (!parsed.success) {
 			return fail(400, {
@@ -129,7 +151,6 @@ export const actions: Actions = {
 					appId: game.appId,
 					authorId: locals.user.id,
 					verdict: report.verdict,
-					platform: 'linux_desktop',
 					protonVersion: report.protonVersion,
 					protonVariant: report.protonVariant,
 					customProtonVersion: report.customProtonVersion,
@@ -145,7 +166,8 @@ export const actions: Actions = {
 			if (cause instanceof SelectedDeviceNotFoundError) {
 				return fail(400, {
 					values,
-					formError: 'Choose one of your saved devices before submitting the report.'
+					formError:
+						'Choose one of your verified Linux PCs or Steam Decks before submitting the report.'
 				});
 			}
 			if (

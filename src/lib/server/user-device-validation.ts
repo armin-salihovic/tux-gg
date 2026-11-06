@@ -1,40 +1,44 @@
 import { z } from 'zod';
+import { STEAM_SYSTEM_INFO_MAX_LENGTH } from '#lib/steam-system-info.js';
 
-const nullableText = (max: number) =>
-	z.preprocess(
-		(value) => (value === '' || value === undefined ? null : value),
-		z.string().trim().max(max).nullable()
-	);
-
-export const userDeviceSchema = z.object({
+const deviceFormSchema = z.object({
 	name: z.string().trim().min(1, 'Enter a name for this device.').max(60),
-	deviceType: z.enum(['linux_desktop', 'steam_deck']),
-	cpu: nullableText(160),
-	gpu: nullableText(160),
-	gpuVendor: z.preprocess(
-		(value) => (value === '' || value === undefined ? null : value),
-		z.enum(['NVIDIA', 'AMD', 'Intel', 'Apple', 'Multiple', 'Unknown']).nullable()
-	),
-	ram: nullableText(80),
-	distribution: nullableText(120),
-	kernel: nullableText(120),
-	graphicsDriver: nullableText(120),
-	gpuDriverDetail: nullableText(120)
+	systemInfo: z.string().max(STEAM_SYSTEM_INFO_MAX_LENGTH)
 });
 
-export type UserDeviceInput = z.infer<typeof userDeviceSchema>;
+const hardwareFields = new Set([
+	'deviceType',
+	'cpu',
+	'gpu',
+	'gpuVendor',
+	'ram',
+	'distribution',
+	'kernel',
+	'graphicsDriver',
+	'gpuDriverDetail'
+]);
 
-export function parseDeviceForm(form: FormData) {
-	return userDeviceSchema.safeParse({
+export type DeviceFormInput = z.infer<typeof deviceFormSchema>;
+export type DeviceFormParseResult =
+	{ success: true; data: DeviceFormInput } | { success: false; error: string };
+
+/** Accept only a friendly label and transient Steam text; hardware values are always server-derived. */
+export function parseDeviceForm(form: FormData): DeviceFormParseResult {
+	if ([...form.keys()].some((key) => hardwareFields.has(key))) {
+		return {
+			success: false,
+			error: 'Hardware specifications can only be set from Steam System Information.'
+		};
+	}
+	const parsed = deviceFormSchema.safeParse({
 		name: form.get('name'),
-		deviceType: form.get('deviceType'),
-		cpu: form.get('cpu'),
-		gpu: form.get('gpu'),
-		gpuVendor: form.get('gpuVendor'),
-		ram: form.get('ram'),
-		distribution: form.get('distribution'),
-		kernel: form.get('kernel'),
-		graphicsDriver: form.get('graphicsDriver'),
-		gpuDriverDetail: form.get('gpuDriverDetail')
+		systemInfo: form.get('systemInfo') ?? ''
 	});
+	if (!parsed.success) {
+		return {
+			success: false,
+			error: parsed.error.issues[0]?.message ?? 'Check the device name and system information.'
+		};
+	}
+	return { success: true, data: parsed.data };
 }

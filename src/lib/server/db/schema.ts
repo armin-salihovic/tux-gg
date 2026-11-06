@@ -259,6 +259,7 @@ export const userDevices = pgTable(
 		kernel: text('kernel'),
 		graphicsDriver: text('graphics_driver'),
 		gpuDriverDetail: text('gpu_driver_detail'),
+		sourceVerifiedAt: timestamp('source_verified_at', { withTimezone: true, mode: 'date' }),
 		isDefault: boolean('is_default').notNull().default(false),
 		createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow()

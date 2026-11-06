@@ -1,7 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { Actions, PageServerLoad } from './$types';
-import type { SavedDeviceType } from '#lib/steam-system-info.js';
+import { parseSteamSystemInfo } from '#lib/steam-system-info.js';
+import { safeDeviceReturnPath } from '#lib/device-return-path.js';
 import { requireUser } from '#lib/server/authz.js';
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
 import { getUserDevice, updateUserDevice, DeviceNotFoundError } from '#lib/server/user-devices.js';
@@ -10,20 +11,7 @@ import { parseDeviceForm } from '#lib/server/user-device-validation.js';
 const idSchema = z.uuid();
 
 function formValues(form: FormData) {
-	return Object.fromEntries(
-		[
-			'name',
-			'deviceType',
-			'cpu',
-			'gpu',
-			'gpuVendor',
-			'ram',
-			'distribution',
-			'kernel',
-			'graphicsDriver',
-			'gpuDriverDetail'
-		].map((key) => [key, String(form.get(key) ?? '').slice(0, key === 'name' ? 60 : 160)])
-	);
+	return { name: String(form.get('name') ?? '').slice(0, 60) };
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -32,32 +20,13 @@ export const load: PageServerLoad = async (event) => {
 	if (!idSchema.safeParse(event.params.id).success) error(404, 'Device not found');
 	const device = await getUserDevice(user.id, event.params.id);
 	if (!device) error(404, 'Device not found');
-	const {
-		id,
-		name,
-		deviceType,
-		cpu,
-		gpu,
-		gpuVendor,
-		ram,
-		distribution,
-		kernel,
-		graphicsDriver,
-		gpuDriverDetail
-	} = device;
+	const { id, name, sourceVerifiedAt } = device;
 	return {
+		returnTo: safeDeviceReturnPath(event.url.searchParams.get('returnTo')) ?? '/settings/devices',
 		device: {
 			id,
 			name,
-			deviceType: deviceType as SavedDeviceType,
-			cpu,
-			gpu,
-			gpuVendor,
-			ram,
-			distribution,
-			kernel,
-			graphicsDriver,
-			gpuDriverDetail
+			sourceVerifiedAt
 		}
 	};
 };
@@ -71,11 +40,18 @@ export const actions: Actions = {
 		if (!parsed.success) {
 			return fail(400, {
 				values: formValues(form),
-				formError: parsed.error.issues[0]?.message ?? 'Check the device details and try again.'
+				formError: parsed.error
 			});
 		}
+		let hardware;
+		if (parsed.data.systemInfo.trim()) {
+			hardware = parseSteamSystemInfo(parsed.data.systemInfo);
+			if (!hardware.ok) {
+				return fail(400, { values: formValues(form), formError: hardware.error });
+			}
+		}
 		try {
-			await updateUserDevice(user.id, event.params.id, parsed.data);
+			await updateUserDevice(user.id, event.params.id, parsed.data.name, hardware?.value);
 		} catch (cause) {
 			if (cause instanceof DeviceNotFoundError) error(404, 'Device not found');
 			return fail(503, {
@@ -83,6 +59,7 @@ export const actions: Actions = {
 				formError: 'The device could not be saved. Please try again.'
 			});
 		}
-		redirect(303, '/settings/devices?saved=1');
+		const returnTo = safeDeviceReturnPath(String(form.get('returnTo') ?? ''));
+		redirect(303, returnTo ?? '/settings/devices?saved=1');
 	}
 };

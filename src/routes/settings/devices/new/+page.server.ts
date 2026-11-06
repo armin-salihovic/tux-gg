@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { parseSteamSystemInfo } from '#lib/steam-system-info.js';
 import { safeDeviceReturnPath } from '#lib/device-return-path.js';
 import { requireUser } from '#lib/server/authz.js';
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
@@ -7,20 +8,7 @@ import { createUserDevice, DeviceLimitError, MAX_USER_DEVICES } from '#lib/serve
 import { parseDeviceForm } from '#lib/server/user-device-validation.js';
 
 function formValues(form: FormData) {
-	return Object.fromEntries(
-		[
-			'name',
-			'deviceType',
-			'cpu',
-			'gpu',
-			'gpuVendor',
-			'ram',
-			'distribution',
-			'kernel',
-			'graphicsDriver',
-			'gpuDriverDetail'
-		].map((key) => [key, String(form.get(key) ?? '').slice(0, key === 'name' ? 60 : 160)])
-	);
+	return { name: String(form.get('name') ?? '').slice(0, 60) };
 }
 
 export const load: PageServerLoad = (event) => {
@@ -39,11 +27,15 @@ export const actions: Actions = {
 		if (!parsed.success) {
 			return fail(400, {
 				values: formValues(form),
-				formError: parsed.error.issues[0]?.message ?? 'Check the device details and try again.'
+				formError: parsed.error
 			});
 		}
+		const hardware = parseSteamSystemInfo(parsed.data.systemInfo);
+		if (!hardware.ok) {
+			return fail(400, { values: formValues(form), formError: hardware.error });
+		}
 		try {
-			await createUserDevice(user.id, parsed.data);
+			await createUserDevice(user.id, parsed.data.name, hardware.value);
 		} catch (cause) {
 			if (cause instanceof DeviceLimitError) {
 				return fail(400, {

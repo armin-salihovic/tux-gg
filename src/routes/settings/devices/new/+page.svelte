@@ -2,18 +2,7 @@
 	import type { ActionData, PageData } from './$types';
 	import DeviceEditor from '#lib/components/DeviceEditor.svelte';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
-	const initialValues = {
-		name: '',
-		deviceType: 'linux_desktop' as const,
-		cpu: '',
-		gpu: '',
-		gpuVendor: '',
-		ram: '',
-		distribution: '',
-		kernel: '',
-		graphicsDriver: '',
-		gpuDriverDetail: ''
-	};
+	const initialValues = { name: '' };
 </script>
 
 <svelte:head

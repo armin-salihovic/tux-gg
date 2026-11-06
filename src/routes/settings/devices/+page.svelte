@@ -33,8 +33,8 @@
 			<p class="eyebrow">Account</p>
 			<h1 class="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">Your devices</h1>
 			<p class="mt-2 max-w-2xl text-sm leading-6 text-muted">
-				Save the computers and Steam Decks you use for gaming. Device details stay private and are
-				copied into each report you submit.
+				Save Linux PCs and Steam Decks for your reports. Hardware comes from Steam System
+				Information and stays read-only; you can choose the device name.
 			</p>
 		</div>
 		{#if data.devices.length < MAX_USER_DEVICES}
@@ -61,7 +61,7 @@
 			<h2 class="text-lg font-bold text-white">No devices saved yet</h2>
 			<p class="mt-2 max-w-xl text-sm leading-6 text-muted">
 				Import Steam System Information to detect your CPU, GPU, memory, Linux distribution, kernel,
-				and graphics driver. You can review and correct every field before saving.
+				and graphics driver. Only Linux PCs and Steam Decks are accepted.
 			</p>
 			<a
 				class="mt-5 inline-flex rounded-xl bg-mint px-4 py-2.5 text-sm font-extrabold text-ink hover:bg-lime"
@@ -79,6 +79,10 @@
 								{#if device.isDefault}<span
 										class="rounded-full border border-mint/25 bg-mint/10 px-2.5 py-1 text-[0.68rem] font-bold text-mint"
 										>Default device</span
+									>{/if}
+								{#if !device.sourceVerifiedAt}<span
+										class="rounded-full border border-amber-200/20 bg-amber-200/[0.06] px-2.5 py-1 text-[0.68rem] font-bold text-amber-100"
+										>Reimport required</span
 									>{/if}
 							</div>
 							<p class="mt-1 text-xs text-muted">{deviceTypeLabel(device.deviceType)}</p>
@@ -99,7 +103,8 @@
 						<div class="flex flex-wrap gap-2">
 							<a
 								class="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-slate-200 hover:border-mint/40 hover:text-mint"
-								href={`/settings/devices/${device.id}/edit`}>Edit</a
+								href={`/settings/devices/${device.id}/edit`}
+								>{device.sourceVerifiedAt ? 'Edit device' : 'Reimport Steam System Information'}</a
 							>
 							{#if !device.isDefault}
 								<form method="POST" action="?/setDefault" use:enhance>
@@ -136,7 +141,8 @@
 		</div>
 	{/if}
 	<p class="mt-5 text-xs leading-5 text-muted">
-		You can save up to {MAX_USER_DEVICES} devices. The imported Steam text is processed in your browser
-		and is not saved.
+		You can save up to {MAX_USER_DEVICES} devices. Steam text is sent to the server for validation, processed
+		transiently, and not stored. Published reports keep their original hardware snapshots when a device
+		is refreshed or deleted.
 	</p>
 </section>

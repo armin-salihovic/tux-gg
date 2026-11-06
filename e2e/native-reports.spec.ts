@@ -77,38 +77,98 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			}
 		]);
 		await page.goto(formPath);
-		await expect(page.getByText("You haven't added any devices yet.")).toBeVisible();
+		await expect(
+			page.getByText(
+				'Add a Linux PC or Steam Deck to your account before writing a compatibility report.'
+			)
+		).toBeVisible();
+		for (let attempt = 0; attempt < 6; attempt += 1) {
+			const blockedReport = await page.request.post(formPath, {
+				form: {
+					id: randomUUID(),
+					verdict: 'yes',
+					deviceId: randomUUID(),
+					content: 'A forged report without a saved device.'
+				}
+			});
+			expect(blockedReport.status()).toBe(403);
+		}
+		await expect(page.getByRole('button', { name: 'Submit report' })).toHaveCount(0);
 		await page.getByRole('link', { name: 'Add Device' }).click();
 		await expect(page).toHaveURL(new RegExp('/settings/devices/new\\?returnTo='));
-		await page.getByLabel('Device name').fill('Main Gaming PC');
-		await page.getByRole('textbox', { name: 'Steam System Information' })
-			.fill(`Computer Information:
-Manufacturer: Gigabyte Technology Co., Ltd.
-Model: B850M DS3H
-Form Factor: Desktop
-Processor Information:
-CPU Vendor: AuthenticAMD
-CPU Brand: AMD Ryzen 7 9800X3D 8-Core Processor
-Operating System:
-CachyOS (64 bit)
-Kernel Name: Linux
-Kernel Version: 7.3
-Video Card:
-Driver: AMD AMD Radeon RX 9070 XT (radeonsi, gfx1201, ACO, DRM 3.64)
-Driver Version: 4.6 (Compatibility Profile) Mesa 26.2.6-arch3.1
-Memory:
-RAM: 31188 Mb`);
+		const windowsInfo = `Computer Information:\nManufacturer: Microsoft\nModel: Windows PC\nProcessor Information:\nCPU Brand: Intel Core i7-12700K\nOperating System:\nWindows 11 (64 bit)\nVideo Card:\nDriver: NVIDIA GeForce RTX 4070\nMemory:\nRAM: 32 GB`;
+		await page.getByLabel('Device name').fill('Windows PC');
+		await page.getByRole('textbox', { name: 'Steam System Information' }).fill(windowsInfo);
 		await page.getByRole('button', { name: 'Detect System Information' }).click();
-		await expect(page.getByLabel('CPU', { exact: true })).toHaveValue('AMD Ryzen 7 9800X3D');
-		await expect(page.getByLabel('GPU', { exact: true })).toHaveValue('AMD Radeon RX 9070 XT');
-		await expect(page.getByLabel('RAM', { exact: true })).toHaveValue('30.5 GiB');
-		await expect(page.getByLabel('Linux distribution or OS')).toHaveValue('CachyOS');
-		await expect(page.getByLabel('Kernel version')).toHaveValue('7.3');
-		await expect(page.getByLabel('Graphics driver')).toHaveValue('Mesa 26.2.6-arch3.1');
+		await expect(page.getByRole('alert')).toContainText(
+			'This system information appears to come from Windows'
+		);
+		await expect(page.getByRole('button', { name: 'Save device' })).toBeDisabled();
+		const windowsSave = await page.request.post('/settings/devices/new?/save', {
+			form: { name: 'Forged Windows PC', systemInfo: windowsInfo }
+		});
+		expect(windowsSave.status()).toBe(400);
+		const malformedSave = await page.request.post('/settings/devices/new?/save', {
+			form: { name: 'Malformed import', systemInfo: 'some random text with a GPU' }
+		});
+		expect(malformedSave.status()).toBe(400);
+		expect(
+			(
+				await web.query(
+					'SELECT count(*)::int AS count FROM public.user_devices WHERE user_id = $1',
+					[userId]
+				)
+			).rows[0]?.count
+		).toBe(0);
+
+		const legacyDeviceId = randomUUID();
+		await web.query(
+			`INSERT INTO public.user_devices (id, user_id, name, device_type, cpu, gpu, gpu_vendor, is_default)
+			 VALUES ($1, $2, 'Old manual PC', 'linux_desktop', 'Unverified CPU', 'Unverified GPU', 'AMD', false)`,
+			[legacyDeviceId, userId]
+		);
+		await page.goto(formPath);
+		await expect(
+			page.getByRole('heading', { name: 'Reimport a saved device to write this report' })
+		).toBeVisible();
+		await page.getByRole('link', { name: 'Reimport Steam System Information' }).click();
+		await expect(page).toHaveURL(
+			new RegExp(`/settings/devices/${legacyDeviceId}/edit\\?returnTo=`)
+		);
+		const cachyInfo = `Computer Information:\nManufacturer: Gigabyte Technology Co., Ltd.\nModel: B850M DS3H\nProcessor Information:\nCPU Brand: AMD Ryzen 7 9800X3D 8-Core Processor\nOperating System:\nCachyOS (64 bit)\nKernel Name: Linux\nKernel Version: 7.3\nVideo Card:\nDriver: AMD AMD Radeon RX 9070 XT (radeonsi, gfx1201, ACO, DRM 3.64)\nDriver Version: 4.6 (Compatibility Profile) Mesa 26.2.6-arch3.1\nMemory:\nRAM: 31188 Mb`;
+		await page.getByRole('textbox', { name: 'Steam System Information' }).fill(cachyInfo);
+		await page.getByRole('button', { name: 'Detect System Information' }).click();
+		await expect(page.getByText('AMD Ryzen 7 9800X3D', { exact: true })).toBeVisible();
+		await expect(page.getByText('AMD Radeon RX 9070 XT', { exact: true })).toBeVisible();
+		await expect(page.getByText('30.5 GiB', { exact: true })).toBeVisible();
+		await expect(page.getByText('CachyOS', { exact: true })).toBeVisible();
+		await expect(page.getByText('Linux desktop', { exact: true })).toBeVisible();
+		await expect(page.getByLabel('CPU', { exact: true })).toHaveCount(0);
+		await expect(
+			page.locator('input[name="cpu"], input[name="gpu"], select[name="deviceType"]')
+		).toHaveCount(0);
+		await page.getByRole('button', { name: 'Save device' }).click();
+		await expect(page).toHaveURL(formPath);
+		const legacyAfterReimport = await web.query(
+			'SELECT source_verified_at, cpu, gpu, distribution FROM public.user_devices WHERE id = $1',
+			[legacyDeviceId]
+		);
+		expect(legacyAfterReimport.rows[0]).toMatchObject({
+			source_verified_at: expect.any(Date),
+			cpu: 'AMD Ryzen 7 9800X3D',
+			gpu: 'AMD Radeon RX 9070 XT',
+			distribution: 'CachyOS'
+		});
+
+		await page.goto('/settings/devices/new?returnTo=' + encodeURIComponent(formPath));
+		await page.getByLabel('Device name').fill('Main Gaming PC');
+		await page.getByRole('textbox', { name: 'Steam System Information' }).fill(cachyInfo);
+		await page.getByRole('button', { name: 'Detect System Information' }).click();
+		await expect(page.getByText('Hardware detected')).toBeVisible();
 		await page.getByRole('button', { name: 'Save device' }).click();
 		await expect(page).toHaveURL(formPath);
 		const mainDeviceResult = await web.query(
-			"SELECT id, device_type, cpu, gpu, gpu_vendor, ram, distribution, kernel, graphics_driver FROM public.user_devices WHERE user_id = $1 AND name = 'Main Gaming PC'",
+			"SELECT id, device_type, cpu, gpu, gpu_vendor, ram, distribution, kernel, graphics_driver, source_verified_at FROM public.user_devices WHERE user_id = $1 AND name = 'Main Gaming PC'",
 			[userId]
 		);
 		const mainDevice = mainDeviceResult.rows[0];
@@ -120,7 +180,8 @@ RAM: 31188 Mb`);
 			ram: '30.5 GiB',
 			distribution: 'CachyOS',
 			kernel: '7.3',
-			graphics_driver: 'Mesa 26.2.6-arch3.1'
+			graphics_driver: 'Mesa 26.2.6-arch3.1',
+			source_verified_at: expect.any(Date)
 		});
 
 		await page.goto('/settings/devices/new');
@@ -133,7 +194,7 @@ RAM: 31188 Mb`);
 			)
 		});
 		await page.getByRole('button', { name: 'Detect System Information' }).click();
-		await expect(page.getByLabel('Device type')).toHaveValue('steam_deck');
+		await expect(page.getByText('Steam Deck', { exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'Save device' }).click();
 		await expect(page).toHaveURL('/settings/devices?saved=1');
 		const deckDeviceResult = await web.query(
@@ -285,7 +346,12 @@ RAM: 31188 Mb`);
 		).toBeVisible();
 
 		await page.goto(`/settings/devices/${mainDevice.id}/edit`);
-		await page.getByLabel('GPU', { exact: true }).fill('AMD Radeon RX 10070 XT');
+		const refreshedInfo = cachyInfo
+			.replace('Ryzen 7 9800X3D', 'Ryzen 9 9900X')
+			.replace('RX 9070 XT', 'RX 10070 XT');
+		await page.getByRole('textbox', { name: 'Steam System Information' }).fill(refreshedInfo);
+		await page.getByRole('button', { name: 'Detect System Information' }).click();
+		await expect(page.getByText('AMD Radeon RX 10070 XT', { exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'Save device' }).click();
 		await expect(page).toHaveURL('/settings/devices?saved=1');
 		await page.goto(gamePath);
@@ -337,6 +403,18 @@ RAM: 31188 Mb`);
 		await expect(
 			publishedReport.getByText('AMD Radeon RX 9070 XT', { exact: false })
 		).toBeVisible();
+		await page.goto('/settings/devices');
+		const legacyCard = page.locator('article').filter({ hasText: 'Old manual PC' });
+		page.once('dialog', (dialog) => dialog.accept());
+		await legacyCard.getByRole('button', { name: 'Delete' }).click();
+		await expect(page).toHaveURL('/settings/devices?saved=1');
+		await page.goto(formPath);
+		await expect(
+			page.getByText(
+				'Add a Linux PC or Steam Deck to your account before writing a compatibility report.'
+			)
+		).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Submit report' })).toHaveCount(0);
 	} finally {
 		await web.end();
 	}

@@ -26,14 +26,16 @@
 - Better Auth tables: user, session, account, and verification.
 - `native_reports`: user-authored compatibility reports with their own platform, author, and moderation state. These are separate from imported ProtonDB reports.
 
-PostgreSQL has separate `tuxgg_web`, `tuxgg_importer`, and `tuxgg_migrator` roles. The web role reads catalog/import tables and manages Better Auth data, but cannot write imported ProtonDB reports or compatibility summaries. It can insert native report content using column-level privileges that exclude moderation state and timestamps; the database default sets moderation to `pending`. It cannot update or delete native reports. The importer can update games, imported reports, batches, and summaries without authentication-table access. The migration role owns TuxGG schema objects and applies schema changes; it is not used by either runtime process. `pnpm db:grant` applies reviewed grants to known tables after each migration.
+PostgreSQL has separate `tuxgg_web`, `tuxgg_importer`, and `tuxgg_migrator` roles. The configured web runtime role reads catalog/import tables and manages Better Auth data, but cannot write imported ProtonDB reports or compatibility summaries. It can insert native report content using column-level privileges that exclude moderation state and timestamps; the database default sets moderation to `pending`. It cannot update or delete native reports. The importer can update games, imported reports, batches, and summaries without authentication-table access. The migration role owns TuxGG schema objects and applies schema changes; it is not used by either runtime process. `pnpm db:upgrade` applies reviewed migrations, repairs the configured runtime grants, and verifies them through the actual runtime login.
+
+`user_devices` records a nullable `source_verified_at` provenance marker. Devices created before server-validated Steam imports remain visible but are ineligible for reports until reimport. The shared Steam System Information parser requires supported Linux/SteamOS evidence and CPU/GPU identification; the server derives every saved hardware value. Native report insertion reloads a verified owner device and copies its hardware into a historical snapshot.
 
 ## Security boundaries
 
 - Better Auth secret, database URL, and optional Steam Web API key are server-only environment values.
 - SteamID64 is stored as `account.providerId = 'steam'` and `account.accountId`; no Steam tokens are stored.
 - Steam placeholder email addresses are unverified, private, and never used for email or account merging.
-- Steam-linked users can submit pending reports. Submission permission is separate from publication permission, which remains operator-only.
+- Steam-linked users need an eligible, server-validated Linux PC or Steam Deck before submitting a pending report. Submission permission is separate from publication permission, which remains operator-only.
 - User-generated/imported comments are rendered as escaped text.
 - Native report actions take author IDs from the authenticated session, verify a Steam account link, rate limit submissions, and never accept moderation state from the browser.
 - Responses include `nosniff`, frame denial, referrer policy, permissions policy, and production HSTS headers.
@@ -46,7 +48,7 @@ Game cards and detail heroes use `src/lib/steam-assets.ts` to derive Steam CDN i
 
 The Steam callback uses Better Auth's single-use, browser-bound state handling; validates the exact realm and return URL; checks the SteamID64 and signed OpenID fields; verifies each assertion with Steam's `check_authentication` endpoint; and reserves the Steam response nonce against replay. Better Auth creates the account and session, while profile enrichment is optional and failure-tolerant. No schema migration is required.
 
-CI provisions an ephemeral PostgreSQL service, prepares a separately named and marked `tuxgg_test` database, checks that database setup leaves maintenance and unrelated database ownership and ACLs unchanged, runs importer recovery tests and mocked Steam lifecycle tests, and seeds deterministic Steam app fixtures before Playwright. Importer tests verify both the database name and marker before truncating tables.
+CI provisions an ephemeral PostgreSQL service, prepares a separately named and marked `tuxgg_test` database, checks that database setup leaves maintenance and unrelated database ownership and ACLs unchanged, tests upgrades against a temporary marked clone, runs importer recovery tests and mocked Steam lifecycle tests, and seeds deterministic Steam app fixtures before Playwright. Importer tests verify both the database name and marker before truncating tables.
 
 ## Native report flow
 

@@ -67,16 +67,28 @@
 		{#if data.devices.length === 0}
 			<div class="p-5 sm:p-8">
 				<div class="rounded-2xl border border-mint/20 bg-mint/[0.05] p-5 sm:p-6">
-					<h2 class="font-bold text-white">Add a device to write this report</h2>
-					<p class="mt-2 text-sm leading-6 text-slate-300">
-						You haven't added any devices yet. Add a device to include your system specifications in
-						your compatibility report.
-					</p>
-					<a
-						class="mt-5 inline-flex rounded-xl bg-mint px-4 py-2.5 text-sm font-extrabold text-ink hover:bg-lime"
-						href={`/settings/devices/new?returnTo=${encodeURIComponent(data.returnTo)}`}
-						>Add Device</a
-					>
+					{#if data.hasUnverifiedDevices && data.reimportDeviceId}
+						<h2 class="font-bold text-white">Reimport a saved device to write this report</h2>
+						<p class="mt-2 text-sm leading-6 text-slate-300">
+							Your existing device needs fresh Steam System Information before it can be used for a
+							compatibility report.
+						</p>
+						<a
+							class="mt-5 inline-flex rounded-xl bg-mint px-4 py-2.5 text-sm font-extrabold text-ink hover:bg-lime"
+							href={`/settings/devices/${data.reimportDeviceId}/edit?returnTo=${encodeURIComponent(data.returnTo)}`}
+							>Reimport Steam System Information</a
+						>
+					{:else}
+						<h2 class="font-bold text-white">Add a Linux PC or Steam Deck to write this report</h2>
+						<p class="mt-2 text-sm leading-6 text-slate-300">
+							Add a Linux PC or Steam Deck to your account before writing a compatibility report.
+						</p>
+						<a
+							class="mt-5 inline-flex rounded-xl bg-mint px-4 py-2.5 text-sm font-extrabold text-ink hover:bg-lime"
+							href={`/settings/devices/new?returnTo=${encodeURIComponent(data.returnTo)}`}
+							>Add Device</a
+						>
+					{/if}
 				</div>
 			</div>
 		{:else}

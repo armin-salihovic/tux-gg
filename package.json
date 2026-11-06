@@ -22,6 +22,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:setup": "python scripts/setup_database.py",
+		"db:upgrade": "python scripts/upgrade_database.py",
 		"db:grant": "python scripts/setup_database.py --grant-only",
 		"db:test:prepare": "python scripts/prepare_test_database.py",
 		"db:test:seed-e2e": "python scripts/seed_e2e_database.py",

@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { PoolClient } from 'pg';
 import { getDb, getPool } from '#lib/server/db/db.js';
 import { userDevices } from '#lib/server/db/schema.js';
-import type { UserDeviceInput } from '#lib/server/user-device-validation.js';
+import type { DetectedSystemInfo } from '#lib/steam-system-info.js';
 import { MAX_USER_DEVICES } from '#lib/device-limits.js';
 
 export { MAX_USER_DEVICES };
@@ -40,6 +40,20 @@ export async function listUserDevices(userId: string): Promise<UserDevice[]> {
 		.orderBy(desc(userDevices.isDefault), asc(userDevices.createdAt));
 }
 
+export async function listEligibleUserDevices(userId: string): Promise<UserDevice[]> {
+	return getDb()
+		.select()
+		.from(userDevices)
+		.where(
+			and(
+				eq(userDevices.userId, userId),
+				isNotNull(userDevices.sourceVerifiedAt),
+				inArray(userDevices.deviceType, ['linux_desktop', 'steam_deck'])
+			)
+		)
+		.orderBy(desc(userDevices.isDefault), asc(userDevices.createdAt));
+}
+
 export async function getUserDevice(userId: string, id: string): Promise<UserDevice | undefined> {
 	const [device] = await getDb()
 		.select()
@@ -49,7 +63,11 @@ export async function getUserDevice(userId: string, id: string): Promise<UserDev
 	return device;
 }
 
-export async function createUserDevice(userId: string, input: UserDeviceInput): Promise<string> {
+export async function createUserDevice(
+	userId: string,
+	name: string,
+	hardware: DetectedSystemInfo
+): Promise<string> {
 	return withUserLock(userId, async (client) => {
 		const { rows } = await client.query<{ count: number; has_default: boolean }>(
 			'SELECT count(*)::int AS count, bool_or(is_default) AS has_default FROM public.user_devices WHERE user_id = $1',
@@ -61,21 +79,21 @@ export async function createUserDevice(userId: string, input: UserDeviceInput): 
 		await client.query(
 			`INSERT INTO public.user_devices (
 				id, user_id, name, device_type, cpu, gpu, gpu_vendor, ram,
-				distribution, kernel, graphics_driver, gpu_driver_detail, is_default
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+				distribution, kernel, graphics_driver, gpu_driver_detail, source_verified_at, is_default
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13)`,
 			[
 				id,
 				userId,
-				input.name,
-				input.deviceType,
-				input.cpu,
-				input.gpu,
-				input.gpuVendor,
-				input.ram,
-				input.distribution,
-				input.kernel,
-				input.graphicsDriver,
-				input.gpuDriverDetail,
+				name,
+				hardware.deviceType,
+				hardware.cpu,
+				hardware.gpu,
+				hardware.gpuVendor,
+				hardware.ram,
+				hardware.distribution,
+				hardware.kernel,
+				hardware.graphicsDriver,
+				hardware.gpuDriverDetail,
 				isDefault
 			]
 		);
@@ -86,30 +104,36 @@ export async function createUserDevice(userId: string, input: UserDeviceInput): 
 export async function updateUserDevice(
 	userId: string,
 	id: string,
-	input: UserDeviceInput
+	name: string,
+	hardware?: DetectedSystemInfo
 ): Promise<void> {
 	await withUserLock(userId, async (client) => {
-		const result = await client.query(
-			`UPDATE public.user_devices SET
-				name = $3, device_type = $4, cpu = $5, gpu = $6, gpu_vendor = $7,
-				ram = $8, distribution = $9, kernel = $10, graphics_driver = $11,
-				gpu_driver_detail = $12, updated_at = now()
-			WHERE id = $1 AND user_id = $2`,
-			[
-				id,
-				userId,
-				input.name,
-				input.deviceType,
-				input.cpu,
-				input.gpu,
-				input.gpuVendor,
-				input.ram,
-				input.distribution,
-				input.kernel,
-				input.graphicsDriver,
-				input.gpuDriverDetail
-			]
-		);
+		const result = hardware
+			? await client.query(
+					`UPDATE public.user_devices SET
+						name = $3, device_type = $4, cpu = $5, gpu = $6, gpu_vendor = $7,
+						ram = $8, distribution = $9, kernel = $10, graphics_driver = $11,
+						gpu_driver_detail = $12, source_verified_at = now(), updated_at = now()
+					WHERE id = $1 AND user_id = $2`,
+					[
+						id,
+						userId,
+						name,
+						hardware.deviceType,
+						hardware.cpu,
+						hardware.gpu,
+						hardware.gpuVendor,
+						hardware.ram,
+						hardware.distribution,
+						hardware.kernel,
+						hardware.graphicsDriver,
+						hardware.gpuDriverDetail
+					]
+				)
+			: await client.query(
+					'UPDATE public.user_devices SET name = $3, updated_at = now() WHERE id = $1 AND user_id = $2',
+					[id, userId, name]
+				);
 		if (result.rowCount !== 1) throw new DeviceNotFoundError();
 	});
 }

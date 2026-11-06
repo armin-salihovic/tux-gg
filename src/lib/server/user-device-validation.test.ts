@@ -1,45 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { userDeviceSchema } from './user-device-validation.js';
+import { parseDeviceForm } from './user-device-validation.js';
 
-const valid = {
-	name: '  Gaming PC  ',
-	deviceType: 'linux_desktop',
-	cpu: ' AMD Ryzen 7 9800X3D ',
-	gpu: ' AMD Radeon RX 9070 XT ',
-	gpuVendor: 'AMD',
-	ram: '30.5 GB',
-	distribution: 'CachyOS',
-	kernel: '7.3',
-	graphicsDriver: 'Mesa 26.2.6-arch3.1',
-	gpuDriverDetail: 'radeonsi'
-};
+const steamInfo = `Processor Information:\nCPU Brand: AMD Ryzen 5 7600\nOperating System:\nUbuntu 24.04\nKernel Name: Linux\nVideo Card:\nDriver: AMD Radeon RX 7800 XT`;
 
-describe('saved device validation', () => {
-	it('trims user text and accepts supported device types', () => {
-		expect(userDeviceSchema.parse(valid)).toMatchObject({
-			name: 'Gaming PC',
-			cpu: 'AMD Ryzen 7 9800X3D',
-			gpu: 'AMD Radeon RX 9070 XT'
-		});
-		expect(userDeviceSchema.safeParse({ ...valid, deviceType: 'steam_deck' }).success).toBe(true);
-	});
-
-	it('allows a useful partial device without inventing values', () => {
-		expect(userDeviceSchema.parse({ name: 'Laptop', deviceType: 'linux_desktop' })).toMatchObject({
-			cpu: null,
-			gpu: null,
-			gpuVendor: null,
-			distribution: null
+describe('saved device form validation', () => {
+	it('accepts only a friendly name and bounded Steam System Information', () => {
+		const form = new FormData();
+		form.set('name', '  Gaming PC  ');
+		form.set('systemInfo', steamInfo);
+		expect(parseDeviceForm(form)).toEqual({
+			success: true,
+			data: { name: 'Gaming PC', systemInfo: steamInfo }
 		});
 	});
 
-	it.each([
-		{ name: '' },
-		{ name: 'x'.repeat(61) },
-		{ deviceType: 'windows_pc' },
-		{ gpuVendor: 'UnknownVendor' },
-		{ cpu: 'x'.repeat(161) }
-	])('rejects invalid saved values %#', (override) => {
-		expect(userDeviceSchema.safeParse({ ...valid, ...override }).success).toBe(false);
+	it('rejects client-supplied hardware and device type fields', () => {
+		for (const key of [
+			'deviceType',
+			'cpu',
+			'gpu',
+			'gpuVendor',
+			'ram',
+			'distribution',
+			'kernel',
+			'graphicsDriver',
+			'gpuDriverDetail'
+		]) {
+			const form = new FormData();
+			form.set('name', 'Gaming PC');
+			form.set('systemInfo', steamInfo);
+			form.set(key, 'forged value');
+			expect(parseDeviceForm(form)).toMatchObject({
+				success: false,
+				error: 'Hardware specifications can only be set from Steam System Information.'
+			});
+		}
+	});
+
+	it.each(['', 'x'.repeat(61)])('rejects invalid device names (%s)', (name) => {
+		const form = new FormData();
+		form.set('name', name);
+		expect(parseDeviceForm(form).success).toBe(false);
 	});
 });

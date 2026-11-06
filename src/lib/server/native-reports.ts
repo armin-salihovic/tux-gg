@@ -5,58 +5,14 @@ export type NativeReportSubmission = {
 	appId: string;
 	authorId: string;
 	verdict: 'yes' | 'no';
-	platform: 'steam_deck' | 'linux_desktop';
 	protonVersion?: string | null;
 	protonVariant?: string | null;
 	customProtonVersion?: string | null;
-	distribution?: string | null;
-	kernel?: string | null;
-	cpu?: string | null;
-	gpu?: string | null;
-	gpuVendor?: string | null;
-	graphicsDriver?: string | null;
-	gpuDriverDetail?: string | null;
-	ram?: string | null;
 	launchOptions?: string | null;
 	performanceNotes?: string | null;
 	knownIssues?: string | null;
 	content: string;
 };
-
-/** Insert only client-approved fields; moderation state and timestamps use database defaults. */
-export async function insertNativeReport(report: NativeReportSubmission): Promise<void> {
-	await getPool().query(
-		`INSERT INTO public.native_reports (
-			id, app_id, author_id, verdict, platform, proton_version, proton_variant,
-			custom_proton_version, distribution, kernel, cpu, gpu, gpu_vendor,
-			graphics_driver, ram, launch_options, performance_notes, known_issues, content, gpu_driver_detail
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
-		)`,
-		[
-			report.id,
-			report.appId,
-			report.authorId,
-			report.verdict,
-			report.platform,
-			report.protonVersion ?? null,
-			report.protonVariant ?? null,
-			report.customProtonVersion ?? null,
-			report.distribution ?? null,
-			report.kernel ?? null,
-			report.cpu ?? null,
-			report.gpu ?? null,
-			report.gpuVendor ?? null,
-			report.graphicsDriver ?? null,
-			report.ram ?? null,
-			report.launchOptions ?? null,
-			report.performanceNotes ?? null,
-			report.knownIssues ?? null,
-			report.content,
-			report.gpuDriverDetail ?? null
-		]
-	);
-}
 
 export class SelectedDeviceNotFoundError extends Error {}
 
@@ -84,7 +40,10 @@ export async function insertNativeReportForDevice(
 		}>(
 			`SELECT name, device_type, cpu, gpu, gpu_vendor, ram, distribution, kernel,
 				graphics_driver, gpu_driver_detail
-			 FROM public.user_devices WHERE id = $1 AND user_id = $2 LIMIT 1`,
+			 FROM public.user_devices
+			 WHERE id = $1 AND user_id = $2 AND source_verified_at IS NOT NULL
+				AND device_type IN ('linux_desktop', 'steam_deck')
+			 LIMIT 1`,
 			[deviceId, report.authorId]
 		);
 		const device = rows[0];
