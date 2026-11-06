@@ -25,7 +25,7 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
-	default: async (event) => {
+	setDefault: async (event) => {
 		const user = requireUser(event);
 		const form = await event.request.formData();
 		const id = idSchema.safeParse(form.get('id'));

@@ -79,18 +79,23 @@ function findDistribution(lines: string[]): string | null {
 function normalizeRam(lines: string[]): string | null {
 	const raw = getField(lines, 'RAM', 'System Memory', 'Memory');
 	if (!raw) return null;
-	const match = /^(\d+(?:\.\d+)?)\s*(mb|mib|gb|gib|bytes?)$/i.exec(raw);
+	const match = /^(\d+(?:\.\d+)?)\s*(MiB|MB|Mb|GiB|GB|Gb|bytes?|B)$/.exec(raw);
 	if (!match) return raw.slice(0, 80);
 	const amount = Number(match[1]);
-	const unit = match[2].toLowerCase();
+	const unit = match[2];
 	if (!Number.isFinite(amount) || amount <= 0) return raw.slice(0, 80);
-	if (unit === 'gb' || unit === 'gib') return `${amount % 1 === 0 ? amount : amount.toFixed(1)} GB`;
-	if (unit === 'bytes' || unit === 'byte') return `${(amount / 1_073_741_824).toFixed(1)} GB`;
-	// Steam labels this memory quantity "Mb" while reporting megabytes (e.g. 31188 Mb).
-	// Keep smaller values verbatim because the unit is ambiguous and cannot be normalized safely.
-	if (amount < 1024) return raw.slice(0, 80);
-	const gigabytes = amount / 1024;
-	return `${Number(gigabytes.toFixed(1))} GB`;
+	const oneDecimal = (value: number) => String(Number(value.toFixed(1)));
+	if (unit === 'GB') return `${oneDecimal(amount)} GB`;
+	if (unit === 'GiB') return `${oneDecimal(amount)} GiB`;
+	if (unit === 'MB') return `${oneDecimal((amount * 1_000_000) / 1_073_741_824)} GiB`;
+	if (unit === 'MiB') return `${oneDecimal(amount / 1024)} GiB`;
+	if (unit === 'bytes' || unit === 'byte' || unit === 'B') {
+		return `${oneDecimal(amount / 1_073_741_824)} GiB`;
+	}
+	// Steam's Memory/RAM field conventionally labels its byte count "Mb" (for example, 31188 Mb).
+	// Keep small counts and the distinct bit unit "Gb" unchanged when the intended quantity is unclear.
+	if (unit === 'Mb' && amount >= 1024) return `${oneDecimal(amount / 1024)} GiB`;
+	return raw.slice(0, 80);
 }
 
 function inferVendor(value: string | null): DetectedSystemInfo['gpuVendor'] {

@@ -17,6 +17,7 @@ test.skip(
 
 test('Steam user submits a pending report, views it privately, then sees it after operator approval', async ({
 	page,
+	browser,
 	baseURL
 }) => {
 	if (!webDatabaseUrl || !operatorDatabaseUrl) throw new Error('Test database URLs are missing.');
@@ -100,7 +101,7 @@ RAM: 31188 Mb`);
 		await page.getByRole('button', { name: 'Detect System Information' }).click();
 		await expect(page.getByLabel('CPU', { exact: true })).toHaveValue('AMD Ryzen 7 9800X3D');
 		await expect(page.getByLabel('GPU', { exact: true })).toHaveValue('AMD Radeon RX 9070 XT');
-		await expect(page.getByLabel('RAM', { exact: true })).toHaveValue('30.5 GB');
+		await expect(page.getByLabel('RAM', { exact: true })).toHaveValue('30.5 GiB');
 		await expect(page.getByLabel('Linux distribution or OS')).toHaveValue('CachyOS');
 		await expect(page.getByLabel('Kernel version')).toHaveValue('7.3');
 		await expect(page.getByLabel('Graphics driver')).toHaveValue('Mesa 26.2.6-arch3.1');
@@ -116,7 +117,7 @@ RAM: 31188 Mb`);
 			cpu: 'AMD Ryzen 7 9800X3D',
 			gpu: 'AMD Radeon RX 9070 XT',
 			gpu_vendor: 'AMD',
-			ram: '30.5 GB',
+			ram: '30.5 GiB',
 			distribution: 'CachyOS',
 			kernel: '7.3',
 			graphics_driver: 'Mesa 26.2.6-arch3.1'
@@ -141,9 +142,37 @@ RAM: 31188 Mb`);
 		);
 		const deckDeviceId = deckDeviceResult.rows[0]?.id as string;
 		await page.goto('/settings/devices');
+		const ordinaryContext = await browser.newContext({ javaScriptEnabled: false });
+		try {
+			await ordinaryContext.addCookies(await page.context().cookies());
+			const ordinaryPage = await ordinaryContext.newPage();
+			await ordinaryPage.goto(new URL('/settings/devices', baseURL!).toString());
+			const ordinaryDeckCard = ordinaryPage.locator('article').filter({
+				hasText: 'Steam Deck OLED'
+			});
+			await ordinaryDeckCard.getByRole('button', { name: 'Set default' }).click();
+			await expect(ordinaryPage).toHaveURL('/settings/devices?saved=1');
+			await expect(ordinaryPage.getByRole('status')).toContainText('saved');
+			await expect(ordinaryDeckCard.getByText('Default device')).toBeVisible();
+			await expect(
+				ordinaryPage
+					.locator('article')
+					.filter({ hasText: 'Main Gaming PC' })
+					.getByText('Default device')
+			).toHaveCount(0);
+		} finally {
+			await ordinaryContext.close();
+		}
+
+		await page.goto('/settings/devices');
+		const mainCard = page.locator('article').filter({ hasText: 'Main Gaming PC' });
 		const deckCard = page.locator('article').filter({ hasText: 'Steam Deck OLED' });
+		await mainCard.getByRole('button', { name: 'Set default' }).click();
+		await expect(page.getByRole('status')).toContainText('saved');
 		await deckCard.getByRole('button', { name: 'Set default' }).click();
 		await expect(page.getByRole('status')).toContainText('saved');
+		await expect(deckCard.getByText('Default device')).toBeVisible();
+		await expect(mainCard.getByText('Default device')).toHaveCount(0);
 
 		await page.goto(formPath);
 		await expect(page.getByRole('heading', { name: 'Write a report' })).toBeVisible();
@@ -200,7 +229,7 @@ RAM: 31188 Mb`);
 			cpu: 'AMD Ryzen 7 9800X3D',
 			gpu: 'AMD Radeon RX 9070 XT',
 			gpu_vendor: 'AMD',
-			ram: '30.5 GB',
+			ram: '30.5 GiB',
 			distribution: 'CachyOS',
 			kernel: '7.3',
 			graphics_driver: 'Mesa 26.2.6-arch3.1'
@@ -242,25 +271,56 @@ RAM: 31188 Mb`);
 		await expect(page.getByText('Published', { exact: true })).toBeVisible();
 		await page.goto(gamePath);
 		await page.reload();
+		const publishedReport = page.locator('article').filter({ hasText: `@${username}` });
+		await expect(publishedReport).toHaveCount(1);
 		await expect(page.getByRole('link', { name: `@${username}` })).toHaveAttribute(
 			'href',
 			`/users/${username}`
 		);
 		await expect(page.getByText(unsafeLookingText, { exact: true })).toBeVisible();
 		await expect(page.locator('img[src="x"]')).toHaveCount(0);
-		await expect(page.getByRole('heading', { name: 'Main Gaming PC' })).toBeVisible();
-		await expect(page.getByText('AMD Radeon RX 9070 XT', { exact: false })).toBeVisible();
+		await expect(publishedReport.getByRole('heading', { name: 'Main Gaming PC' })).toBeVisible();
+		await expect(
+			publishedReport.getByText('AMD Radeon RX 9070 XT', { exact: false })
+		).toBeVisible();
 
 		await page.goto(`/settings/devices/${mainDevice.id}/edit`);
 		await page.getByLabel('GPU', { exact: true }).fill('AMD Radeon RX 10070 XT');
 		await page.getByRole('button', { name: 'Save device' }).click();
 		await expect(page).toHaveURL('/settings/devices?saved=1');
 		await page.goto(gamePath);
-		await expect(page.getByText('AMD Radeon RX 9070 XT', { exact: false })).toBeVisible();
-		await expect(page.getByText('AMD Radeon RX 10070 XT', { exact: false })).toHaveCount(0);
+		await expect(
+			publishedReport.getByText('AMD Radeon RX 9070 XT', { exact: false })
+		).toBeVisible();
+		await expect(publishedReport.getByText('AMD Radeon RX 10070 XT', { exact: false })).toHaveCount(
+			0
+		);
 
+		const ordinaryDeleteContext = await browser.newContext({ javaScriptEnabled: false });
+		try {
+			await ordinaryDeleteContext.addCookies(await page.context().cookies());
+			const ordinaryDeletePage = await ordinaryDeleteContext.newPage();
+			await ordinaryDeletePage.goto(new URL('/settings/devices', baseURL!).toString());
+			const ordinaryDeckCard = ordinaryDeletePage.locator('article').filter({
+				hasText: 'Steam Deck OLED'
+			});
+			await ordinaryDeckCard.getByRole('button', { name: 'Delete' }).click();
+			await expect(ordinaryDeletePage).toHaveURL('/settings/devices?saved=1');
+			await expect(
+				ordinaryDeletePage.locator('article').filter({ hasText: 'Steam Deck OLED' })
+			).toHaveCount(0);
+			await expect(
+				ordinaryDeletePage
+					.locator('article')
+					.filter({ hasText: 'Main Gaming PC' })
+					.getByText('Default device')
+			).toBeVisible();
+		} finally {
+			await ordinaryDeleteContext.close();
+		}
+
+		await page.goto('/settings/devices');
 		page.once('dialog', (dialog) => dialog.accept());
-		const mainCard = page.locator('article').filter({ hasText: 'Main Gaming PC' });
 		await mainCard.getByRole('button', { name: 'Delete' }).click();
 		await expect(page).toHaveURL('/settings/devices?saved=1');
 		const preserved = await web.query(
@@ -273,8 +333,10 @@ RAM: 31188 Mb`);
 			gpu: 'AMD Radeon RX 9070 XT'
 		});
 		await page.goto(gamePath);
-		await expect(page.getByRole('heading', { name: 'Main Gaming PC' })).toBeVisible();
-		await expect(page.getByText('AMD Radeon RX 9070 XT', { exact: false })).toBeVisible();
+		await expect(publishedReport.getByRole('heading', { name: 'Main Gaming PC' })).toBeVisible();
+		await expect(
+			publishedReport.getByText('AMD Radeon RX 9070 XT', { exact: false })
+		).toBeVisible();
 	} finally {
 		await web.end();
 	}

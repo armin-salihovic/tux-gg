@@ -34,7 +34,7 @@ Memory:
 RAM: 31188 Mb`;
 
 describe('Steam System Information parser', () => {
-	it('extracts the supplied CachyOS desktop fixture and converts Steam RAM Mb as megabytes', () => {
+	it('extracts the supplied CachyOS desktop fixture and converts Steam RAM Mb to GiB', () => {
 		const result = parseSteamSystemInfo(cachyFixture);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
@@ -43,7 +43,7 @@ describe('Steam System Information parser', () => {
 			cpu: 'AMD Ryzen 7 9800X3D',
 			gpu: 'AMD Radeon RX 9070 XT',
 			gpuVendor: 'AMD',
-			ram: '30.5 GB',
+			ram: '30.5 GiB',
 			distribution: 'CachyOS',
 			kernel: '7.3',
 			graphicsDriver: 'Mesa 26.2.6-arch3.1',
@@ -126,5 +126,17 @@ describe('Steam System Information parser', () => {
 		expect(parseSteamSystemInfo('x'.repeat(STEAM_SYSTEM_INFO_MAX_LENGTH + 1))).toMatchObject({
 			ok: false
 		});
+	});
+
+	it('distinguishes decimal MB, binary MiB, byte, bit, GB, and GiB units', () => {
+		const parseRam = (value: string) => {
+			const result = parseSteamSystemInfo(`Memory:\nRAM: ${value}`);
+			return result.ok ? result.value.ram : null;
+		};
+		expect(parseRam('31188 MB')).toBe('29 GiB');
+		expect(parseRam('16384 MiB')).toBe('16 GiB');
+		expect(parseRam('32 GB')).toBe('32 GB');
+		expect(parseRam('32 GiB')).toBe('32 GiB');
+		expect(parseRam('16 Gb')).toBe('16 Gb');
 	});
 });

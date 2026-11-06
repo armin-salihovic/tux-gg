@@ -2,11 +2,14 @@
 	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
 	import { MAX_USER_DEVICES } from '#lib/device-limits.js';
+	import { formatGpuName } from '#lib/gpu-format.js';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const deviceTypeLabel = (type: string) =>
 		type === 'steam_deck' ? 'Steam Deck' : 'Linux desktop';
 	const summary = (device: PageData['devices'][number]) =>
-		[device.gpu, device.cpu, device.ram, device.distribution].filter(Boolean).join(' · ');
+		[formatGpuName(device.gpuVendor, device.gpu), device.cpu, device.ram, device.distribution]
+			.filter(Boolean)
+			.join(' · ');
 </script>
 
 <svelte:head
@@ -83,9 +86,7 @@
 								{summary(device) || 'Hardware details not detected yet.'}
 							</p>
 							<dl class="mt-4 grid gap-x-5 gap-y-2 text-xs sm:grid-cols-2">
-								{#each [['CPU', device.cpu], ['GPU', [device.gpuVendor, device.gpu]
-											.filter(Boolean)
-											.join(' ')], ['RAM', device.ram], ['Distribution', device.distribution], ['Kernel', device.kernel], ['Graphics driver', [device.graphicsDriver, device.gpuDriverDetail]
+								{#each [['CPU', device.cpu], ['GPU', formatGpuName(device.gpuVendor, device.gpu)], ['RAM', device.ram], ['Distribution', device.distribution], ['Kernel', device.kernel], ['Graphics driver', [device.graphicsDriver, device.gpuDriverDetail]
 											.filter(Boolean)
 											.join(' · ')]] as [label, value]}
 									<div>
@@ -101,7 +102,7 @@
 								href={`/settings/devices/${device.id}/edit`}>Edit</a
 							>
 							{#if !device.isDefault}
-								<form method="POST" action="?/default" use:enhance>
+								<form method="POST" action="?/setDefault" use:enhance>
 									<input type="hidden" name="id" value={device.id} />
 									<button
 										class="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-slate-200 hover:border-mint/40 hover:text-mint"
