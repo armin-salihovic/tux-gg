@@ -191,7 +191,7 @@ def test_upgrade_existing_database_missing_migration_repairs_grants_and_is_idemp
 		# A current database succeeds again without another backup or ACL churn.
 		third = _run_upgrade(env)
 		assert third.returncode == 0, third.stdout + third.stderr
-		assert "already current" in third.stdout
+		assert "is current" in third.stdout
 		assert len(list(backup_dir.glob("*.dump"))) == 2
 
 		# Normal mode refuses both the maintenance DB and the standard test DB.
