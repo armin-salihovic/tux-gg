@@ -187,6 +187,9 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await page.goto('/settings/devices/new');
 		await page.getByLabel('Device name').fill('Steam Deck OLED');
 		const deckSystemInfo = page.getByRole('textbox', { name: 'Steam System Information' });
+		// Confirm the Svelte handler is hydrated before dispatching the file change event.
+		await page.getByRole('button', { name: 'Detect System Information' }).click();
+		await expect(page.getByRole('alert')).toBeVisible();
 		await page.getByLabel('Upload Steam System Information text file').setInputFiles({
 			name: 'steam-deck.txt',
 			mimeType: 'text/plain',
@@ -240,8 +243,10 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await page.goto(formPath);
 		await expect(page.getByRole('heading', { name: 'Write a report' })).toBeVisible();
 		await page.getByLabel('Compatibility verdict').selectOption('yes');
-		await expect(page.getByLabel('Which device did you play on?')).toHaveValue(deckDeviceId);
-		await page.getByLabel('Which device did you play on?').selectOption(mainDevice.id);
+		const deviceSelect = page.getByLabel('Which device did you play on?');
+		await expect(deviceSelect).toHaveValue(deckDeviceId);
+		await deviceSelect.selectOption(mainDevice.id);
+		await expect(deviceSelect).toHaveValue(mainDevice.id);
 		await page.getByLabel('Your experience').fill('short');
 		await page.locator('form').evaluate((form) => {
 			(form as HTMLFormElement).noValidate = true;
@@ -251,6 +256,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			'Check the highlighted fields and try again.'
 		);
 		await expect(page).toHaveURL(formPath);
+		await expect(deviceSelect).toHaveValue(mainDevice.id);
 
 		const unsafeLookingText = `Browser journey ${suffix}: <img src=x onerror=alert(1)>`;
 		await page.getByLabel('Your experience').fill(unsafeLookingText);
