@@ -186,6 +186,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 
 		await page.goto('/settings/devices/new');
 		await page.getByLabel('Device name').fill('Steam Deck OLED');
+		const deckSystemInfo = page.getByRole('textbox', { name: 'Steam System Information' });
 		await page.getByLabel('Upload Steam System Information text file').setInputFiles({
 			name: 'steam-deck.txt',
 			mimeType: 'text/plain',
@@ -193,6 +194,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 				'Computer Information:\nManufacturer: Valve\nModel: Galileo\nOperating System:\nSteamOS Holo (64 bit)\nProcessor Information:\nCPU Brand: AMD Custom APU 0406\nVideo Card:\nDriver: AMD AMD Custom GPU 0406 (RADV VANGOGH)\nMemory:\nRAM: 16384 Mb'
 			)
 		});
+		await expect(deckSystemInfo).toHaveValue(/SteamOS Holo/);
 		await page.getByRole('button', { name: 'Detect System Information' }).click();
 		await expect(page.getByText('Steam Deck', { exact: true })).toBeVisible();
 		await page.getByRole('button', { name: 'Save device' }).click();
@@ -378,7 +380,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			await expect(
 				ordinaryDeletePage
 					.locator('article')
-					.filter({ hasText: 'Main Gaming PC' })
+					.filter({ hasText: 'Old manual PC' })
 					.getByText('Default device')
 			).toBeVisible();
 		} finally {
