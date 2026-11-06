@@ -411,8 +411,9 @@ def inspect_runtime_privileges(runtime_url: str) -> tuple[dict[str, set[str]], l
 			columns = [row[0] for row in cur.fetchall()]
 			cur.execute(
 				"SELECT a.attname, acl.privilege_type FROM pg_attribute a "
-				"CROSS JOIN LATERAL aclexplode(COALESCE(a.attacl, '{}'::aclitem[])) acl "
+				"CROSS JOIN LATERAL aclexplode(a.attacl) acl "
 				"WHERE a.attrelid = 'public.native_reports'::regclass AND a.attnum > 0 "
+				"AND a.attacl IS NOT NULL "
 				"AND NOT a.attisdropped AND acl.grantee = 0"
 			)
 			for column, privilege in cur.fetchall():
