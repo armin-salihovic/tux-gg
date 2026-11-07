@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance, type SubmitFunction } from '$app/forms';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { PageData } from './$types';
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	import { nativeReportLimits } from '#lib/native-report-validation.js';
@@ -21,6 +21,10 @@
 				''
 		)
 	);
+	let hydrated = $state(false);
+	onMount(() => {
+		hydrated = true;
+	});
 	const selectedDevice = $derived(data.devices.find((device) => device.id === selectedDeviceId));
 	const fieldError = (name: string) => form?.errors?.[name]?.[0];
 	const enhanceReport: SubmitFunction = ({ formElement, formData }) => {
@@ -101,7 +105,12 @@
 				</div>
 			</div>
 		{:else}
-			<form method="POST" use:enhance={enhanceReport} class="space-y-7 p-5 sm:p-8">
+			<form
+				method="POST"
+				use:enhance={enhanceReport}
+				data-hydrated={hydrated ? 'true' : 'false'}
+				class="space-y-7 p-5 sm:p-8"
+			>
 				<input type="hidden" name="id" value={form?.values?.id ?? data.submissionId} />
 				{#if form?.formError}<p
 						role="alert"

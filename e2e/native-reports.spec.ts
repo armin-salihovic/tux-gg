@@ -252,6 +252,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 
 		await page.goto(formPath);
 		await expect(page.getByRole('heading', { name: 'Write a report' })).toBeVisible();
+		await expect(page.locator('form')).toHaveAttribute('data-hydrated', 'true');
 		await page.getByLabel('Compatibility verdict').selectOption('yes');
 		const deviceSelect = page.getByLabel('Which device did you play on?');
 		await expect(deviceSelect).toHaveValue(deckDeviceId);
@@ -259,47 +260,14 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await expect(deviceSelect).toHaveValue(mainDevice.id);
 		await expect(page.getByText('Main Gaming PC · Linux desktop', { exact: true })).toBeVisible();
 		await page.getByLabel('Your experience').fill('short');
-		const validationResponsePromise = page.waitForResponse(
-			(response) =>
-				response.request().method() === 'POST' && new URL(response.url()).pathname === formPath
-		);
 		await page.locator('form').evaluate((form) => {
 			(form as HTMLFormElement).noValidate = true;
 		});
-		const preSubmitState = await page.locator('form').evaluate((form) => {
-			const device = form.querySelector<HTMLSelectElement>('#deviceId');
-			const experience = form.querySelector<HTMLTextAreaElement>('#content');
-			return {
-				deviceId: device?.value,
-				content: experience?.value
-			};
-		});
-		console.log('[native-report before submit]', JSON.stringify(preSubmitState));
 		await page.getByRole('button', { name: 'Submit report' }).click();
 		await expect(page.getByRole('alert')).toContainText(
 			'Check the highlighted fields and try again.'
 		);
 		await expect(page).toHaveURL(formPath);
-		const validationResponse = await validationResponsePromise;
-		const submittedForm = new URLSearchParams(validationResponse.request().postData() ?? '');
-		const validationState = await deviceSelect.evaluate((select) => ({
-			value: (select as HTMLSelectElement).value,
-			options: Array.from((select as HTMLSelectElement).options, (option) => ({
-				value: option.value,
-				label: option.textContent?.trim(),
-				selected: option.selected
-			}))
-		}));
-		console.log(
-			'[native-report validation state]',
-			JSON.stringify({
-				expectedDeviceId: mainDevice.id,
-				submittedDeviceId: submittedForm.get('deviceId'),
-				responseStatus: validationResponse.status(),
-				responseBody: await validationResponse.text(),
-				validationState
-			})
-		);
 		await expect(deviceSelect).toHaveValue(mainDevice.id);
 		await expect(page.getByLabel('Your experience')).toHaveValue('short');
 
