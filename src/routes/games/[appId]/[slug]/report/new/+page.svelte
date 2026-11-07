@@ -28,8 +28,12 @@
 		const submittedDeviceId = formElement.querySelector<HTMLSelectElement>('#deviceId')?.value;
 		if (submittedDeviceId) formData.set('deviceId', submittedDeviceId);
 		submitting = true;
-		return async ({ update }) => {
+		return async ({ result, update }) => {
 			try {
+				if (result.type === 'failure' && typeof submittedDeviceId === 'string') {
+					const returnedForm = result.data as ReportFormState;
+					if (returnedForm.values) returnedForm.values.deviceId = submittedDeviceId;
+				}
 				await update({ reset: false, refreshAll: false });
 				if (typeof submittedDeviceId === 'string') selectedDeviceId = submittedDeviceId;
 			} finally {
