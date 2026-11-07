@@ -101,17 +101,13 @@ describe.skipIf(!enabled)('saved device PostgreSQL integration', () => {
 			`SELECT has_table_privilege(current_user, 'public.user_devices', 'SELECT') AS can_select,
 				has_table_privilege(current_user, 'public.user_devices', 'INSERT') AS can_insert,
 				has_table_privilege(current_user, 'public.user_devices', 'UPDATE') AS can_update,
-				has_table_privilege(current_user, 'public.user_devices', 'DELETE') AS can_delete,
-				has_table_privilege(current_user, 'public.reports', 'INSERT') AS can_write_imported_reports,
-				has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE') AS can_edit_summaries`
+				has_table_privilege(current_user, 'public.user_devices', 'DELETE') AS can_delete`
 		);
 		expect(privileges.rows[0]).toEqual({
 			can_select: true,
 			can_insert: true,
 			can_update: true,
-			can_delete: true,
-			can_write_imported_reports: false,
-			can_edit_summaries: false
+			can_delete: true
 		});
 
 		for (let index = 0; index < 10; index++) {

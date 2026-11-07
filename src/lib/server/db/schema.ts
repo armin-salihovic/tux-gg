@@ -1,15 +1,10 @@
 import { desc, sql } from 'drizzle-orm';
 import {
-	bigserial,
 	boolean,
-	char,
 	check,
 	customType,
 	index,
-	integer,
 	jsonb,
-	bigint,
-	numeric,
 	pgTable,
 	text,
 	timestamp,
@@ -31,7 +26,7 @@ export const games = pgTable(
 		slug: text('slug').notNull(),
 		artworkUrl: text('artwork_url'),
 		headerImageUrl: text('header_image_url'),
-		metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+		metadata: jsonb('metadata').$type<unknown>().notNull().default({}),
 		searchVector: tsvector('search_vector')
 			.generatedAlwaysAs(sql`setweight(to_tsvector('simple'::regconfig, coalesce(title, '')), 'A')`)
 			.notNull(),
@@ -44,125 +39,6 @@ export const games = pgTable(
 		index('games_slug_idx').on(table.slug),
 		index('games_updated_at_idx').on(table.updatedAt),
 		check('games_app_id_check', sql`${table.appId} ~ '^[0-9]+$'`)
-	]
-);
-
-export const importBatches = pgTable(
-	'import_batches',
-	{
-		id: bigserial('id', { mode: 'number' }).primaryKey(),
-		sourceFilename: text('source_filename').notNull(),
-		sourceChecksum: char('source_checksum', { length: 64 }).notNull(),
-		sourceSchema: text('source_schema').notNull(),
-		status: text('status').notNull(),
-		startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
-		finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
-		sourceRecords: integer('source_records').notNull().default(0),
-		insertedRecords: integer('inserted_records').notNull().default(0),
-		duplicateRecords: integer('duplicate_records').notNull().default(0),
-		chromebookRecords: integer('chromebook_records').notNull().default(0),
-		invalidRecords: integer('invalid_records').notNull().default(0),
-		missingFields: jsonb('missing_fields').$type<Record<string, number>>().notNull().default({}),
-		errorSummary: text('error_summary'),
-		importMode: text('import_mode').notNull().default('full'),
-		sampleLimit: integer('sample_limit')
-	},
-	(table) => [
-		index('import_batches_started_idx').on(desc(table.startedAt)),
-		index('import_batches_checksum_idx').on(table.sourceChecksum),
-		check('import_batches_status_check', sql`${table.status} in ('running', 'complete', 'failed')`),
-		check('import_batches_mode_check', sql`${table.importMode} in ('full', 'sample')`),
-		check(
-			'import_batches_sample_limit_check',
-			sql`(${table.importMode} = 'full' and ${table.sampleLimit} is null) or (${table.importMode} = 'sample' and ${table.sampleLimit} > 0)`
-		)
-	]
-);
-
-export const reports = pgTable(
-	'reports',
-	{
-		id: bigserial('id', { mode: 'number' }).primaryKey(),
-		appId: text('app_id')
-			.notNull()
-			.references(() => games.appId, { onDelete: 'cascade' }),
-		source: text('source').notNull().default('protondb'),
-		sourceFingerprint: char('source_fingerprint', { length: 64 }).notNull(),
-		submittedAt: timestamp('submitted_at', { withTimezone: true, mode: 'date' }),
-		sourceVerdict: text('source_verdict'),
-		sourceRating: text('source_rating'),
-		protonVersion: text('proton_version'),
-		protonVariant: text('proton_variant'),
-		customProtonVersion: text('custom_proton_version'),
-		distribution: text('distribution'),
-		kernel: text('kernel'),
-		cpu: text('cpu'),
-		gpu: text('gpu'),
-		gpuVendor: text('gpu_vendor').notNull().default('Unknown'),
-		graphicsDriver: text('graphics_driver'),
-		ram: text('ram'),
-		steamRuntimeVersion: text('steam_runtime_version'),
-		xWindowManager: text('x_window_manager'),
-		launchOptions: text('launch_options'),
-		comments: text('comments'),
-		hardwareDetails: text('hardware_details'),
-		scoringValue: numeric('scoring_value', { precision: 5, scale: 4 }),
-		sourceData: jsonb('source_data').$type<Record<string, unknown>>().notNull().default({}),
-		importedBatchId: bigint('imported_batch_id', { mode: 'number' })
-			.notNull()
-			.references(() => importBatches.id, { onDelete: 'restrict' }),
-		createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow()
-	},
-	(table) => [
-		uniqueIndex('reports_source_fingerprint_unique').on(table.sourceFingerprint),
-		index('reports_app_date_idx').on(table.appId, desc(table.submittedAt)),
-		index('reports_app_gpu_vendor_idx').on(table.appId, table.gpuVendor),
-		index('reports_app_distribution_idx').on(table.appId, table.distribution),
-		index('reports_app_proton_idx').on(table.appId, table.protonVariant, table.protonVersion),
-		index('reports_app_verdict_idx').on(table.appId, table.sourceVerdict),
-		index('reports_app_launch_options_idx').on(table.appId, table.launchOptions),
-		index('reports_batch_idx').on(table.importedBatchId),
-		check('reports_protondb_source_check', sql`${table.source} = 'protondb'`),
-		check(
-			'reports_scoring_value_range_check',
-			sql`${table.scoringValue} is null or (${table.scoringValue} >= 0 and ${table.scoringValue} <= 1)`
-		),
-		check(
-			'reports_gpu_vendor_check',
-			sql`${table.gpuVendor} in ('NVIDIA', 'AMD', 'Intel', 'Apple', 'Multiple', 'Unknown')`
-		)
-	]
-);
-
-export const compatibilitySummaries = pgTable(
-	'compatibility_summaries',
-	{
-		appId: text('app_id')
-			.primaryKey()
-			.references(() => games.appId, { onDelete: 'cascade' }),
-		tier: text('tier').notNull().default('unknown'),
-		reportCount: integer('report_count').notNull().default(0),
-		scoredReportCount: integer('scored_report_count').notNull().default(0),
-		yesCount: integer('yes_count').notNull().default(0),
-		noCount: integer('no_count').notNull().default(0),
-		weightedScore: numeric('weighted_score', { precision: 8, scale: 5 }),
-		effectiveSampleSize: numeric('effective_sample_size', { precision: 12, scale: 4 }),
-		verdictDistribution: jsonb('verdict_distribution')
-			.$type<Record<string, number>>()
-			.notNull()
-			.default({}),
-		lastReportAt: timestamp('last_report_at', { withTimezone: true, mode: 'date' }),
-		calculatedAt: timestamp('calculated_at', { withTimezone: true, mode: 'date' })
-			.notNull()
-			.defaultNow()
-	},
-	(table) => [
-		index('compatibility_summaries_tier_count_idx').on(table.tier, desc(table.reportCount)),
-		index('compatibility_summaries_last_report_idx').on(desc(table.lastReportAt)),
-		check(
-			'compatibility_summaries_tier_check',
-			sql`${table.tier} in ('platinum', 'gold', 'silver', 'bronze', 'borked', 'unknown')`
-		)
 	]
 );
 
@@ -328,9 +204,6 @@ export const nativeReports = pgTable(
 
 export const schema = {
 	games,
-	importBatches,
-	reports,
-	compatibilitySummaries,
 	authUser,
 	authSession,
 	authAccount,

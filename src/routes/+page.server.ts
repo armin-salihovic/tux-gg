@@ -19,7 +19,6 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
 			available: false,
 			popular: [],
 			recent: [],
-			tiers: {},
 			totalGames: 0,
 			totalReports: 0,
 			canonical: absoluteUrl('/'),

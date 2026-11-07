@@ -11,6 +11,7 @@ from setup_database import (
     IMPORTER_PRIVILEGES,
     IMPORTER_ROLE,
     MIGRATION_ROLE,
+    SEQUENCES,
     WEB_PRIVILEGES,
     WEB_ROLE,
     _validate_role,
@@ -128,7 +129,7 @@ def configure_runtime_roles(admin_url: str, test_url: str) -> None:
             if table == "native_reports":
                 grant_native_report_insert_columns(cur, (WEB_ROLE,))
 
-        for sequence in ("reports_id_seq", "import_batches_id_seq"):
+        for sequence in SEQUENCES:
             cur.execute("SELECT to_regclass(%s)", (f"public.{sequence}",))
             if cur.fetchone()[0] is not None:
                 cur.execute(

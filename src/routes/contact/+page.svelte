@@ -14,7 +14,7 @@
 		{
 			title: 'Project information',
 			paragraphs: [
-				'Imported reports link to ProtonDB for source context. The source code and local data analysis are documented in the project workspace.'
+				'TuxGG maintains its own Steam game catalog and community reports. Use the configured project contact for support, privacy requests, or game metadata corrections.'
 			]
 		}
 	]);

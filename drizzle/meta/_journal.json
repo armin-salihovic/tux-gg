@@ -5,36 +5,8 @@
 		{
 			"idx": 0,
 			"version": "7",
-			"when": 1793750400000,
-			"tag": "0000_tuxgg_initial",
-			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1793824345087,
-			"tag": "0001_import_recovery",
-			"breakpoints": true
-		},
-		{
-			"idx": 2,
-			"version": "7",
-			"when": 1793888742378,
-			"tag": "0002_native_report_platform",
-			"breakpoints": true
-		},
-		{
-			"idx": 3,
-			"version": "7",
-			"when": 1793917901081,
-			"tag": "0003_user_devices",
-			"breakpoints": true
-		},
-		{
-			"idx": 4,
-			"version": "7",
-			"when": 1794005369410,
-			"tag": "0004_user_device_source_verification",
+			"when": 1794061950675,
+			"tag": "0000_silky_stone_men",
 			"breakpoints": true
 		}
 	]

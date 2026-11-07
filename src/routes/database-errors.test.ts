@@ -4,8 +4,8 @@ const queries = vi.hoisted(() => ({
 	getHomeData: vi.fn(),
 	getCatalog: vi.fn(),
 	getGameById: vi.fn(),
-	getGameReports: vi.fn(),
-	getGameReportFilters: vi.fn()
+	getPublishedNativeReports: vi.fn(),
+	getNativeReportFilters: vi.fn()
 }));
 
 vi.mock('#lib/server/db/queries.js', () => queries);
@@ -65,11 +65,10 @@ describe('database-backed page failures', () => {
 			title: 'Team Fortress 2',
 			slug: 'team-fortress-2',
 			titleAvailable: true,
-			tier: 'platinum',
 			reportCount: 12
 		});
-		queries.getGameReports.mockRejectedValue(failingDatabaseError);
-		queries.getGameReportFilters.mockResolvedValue({
+		queries.getPublishedNativeReports.mockRejectedValue(failingDatabaseError);
+		queries.getNativeReportFilters.mockResolvedValue({
 			gpuVendors: [],
 			distributions: [],
 			proton: []
@@ -81,14 +80,14 @@ describe('database-backed page failures', () => {
 		const data = (await loadGame(event as never)) as unknown as {
 			available: boolean;
 			game?: { title: string };
-			reportData: null;
+			nativeReportData: null;
 		};
 
 		expect(data.available).toBe(true);
 		expect(data.game?.title).toBe('Team Fortress 2');
-		expect(data.reportData).toBeNull();
+		expect(data.nativeReportData).toBeNull();
 		expect(headers['cache-control']).toBe('private, no-store');
-		expect(logger).toHaveBeenCalledWith('[database] game report queries failed');
+		expect(logger).toHaveBeenCalledWith('[database] native community report queries failed');
 		expect(JSON.stringify(data)).not.toContain('password=private');
 	});
 

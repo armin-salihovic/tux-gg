@@ -4,23 +4,17 @@
 	let { data }: { data: PageData } = $props();
 	const sections = [
 		{
-			title: 'A practical compatibility guide',
+			title: 'A Steam-first game catalog',
 			paragraphs: [
-				'TuxGG helps Linux and Steam Deck players find reports from people running the same games. Each game page brings together the reported outcome, Proton build, distribution, GPU, driver, launch options, and notes.',
-				'The app currently imports ProtonDB data. Imported reports are labeled and linked to their source; their authors are not presented as TuxGG users.'
-			]
-		},
-		{
-			title: 'How to read the tier',
-			paragraphs: [
-				'TuxGG calculates its own recency-weighted compatibility tier from recognized source ratings and verdicts. A tier is only shown when there is enough recent evidence, and the page keeps report counts and source distributions visible for context.',
-				'The tier is a summary of community reports, not a guarantee that a game will work on a particular system. Your hardware, software versions, and game updates can change the result.'
+				'TuxGG keeps a searchable catalog keyed by Steam AppID. Existing titles, slugs, artwork, and metadata are preserved, while Steam store data can fill gaps and refresh changing details.',
+				'Game pages link to Steam and show the metadata available for that catalog entry.'
 			]
 		},
 		{
 			title: 'Community reports',
 			paragraphs: [
-				'Steam-authenticated users can submit reports from each game page. Reports start in private pending review and appear publicly only after operator approval. Native TuxGG reports use a separate data model and section from imported ProtonDB reports.'
+				'Steam-authenticated players can submit Linux and Steam Deck reports with a verdict and optional system details. Reports stay private while pending and become public only after operator review.',
+				'Reports describe an individual setup and experience. They are not a guarantee that a game will work on another system.'
 			]
 		}
 	];
@@ -29,7 +23,7 @@
 <ContentPage
 	eyebrow="About TuxGG"
 	title="Make Linux game compatibility easier to understand"
-	intro="TuxGG brings community compatibility reports and system details into one searchable catalog."
+	intro="TuxGG combines a Steam game catalog with player-submitted Linux and Steam Deck reports."
 	{sections}
 	canonical={data.canonical}
 />

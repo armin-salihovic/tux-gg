@@ -14,22 +14,12 @@ Existing devices created before server validation are retained and shown with **
 
 Users can set one default device or delete a device. Only validated Linux PCs and Steam Decks appear in the report form. A user's default device is preselected when eligible; otherwise the first eligible device is selected. Each new report copies the device name and hardware into an immutable report snapshot. Renaming, refreshing, or deleting a device does not rewrite prior reports; deleting a device clears only its optional reference.
 
-## Database migration and permissions
+## Database schema and permissions
 
-Migration `0003_user_devices.sql` adds the device table and nullable report snapshot references. Migration `0004_user_device_source_verification.sql` adds a nullable provenance timestamp. Existing devices remain unverified until reimport. Both migrations are additive and leave imported ProtonDB data and historical native report snapshots untouched.
+The baseline schema contains `user_devices` and the optional `device_id` and `device_name_snapshot` references on `native_reports`. `source_verified_at` distinguishes devices created from validated Steam System Information from older records. Existing devices without this value remain visible but require reimport before they can be used for a new report.
 
-For every existing installation, use:
-
-```powershell
-pnpm db:upgrade
-```
-
-The command verifies the `tuxgg` database, the runtime, migration, and administration connections, the Drizzle migration ledger, and the current PostgreSQL installation. Before it makes schema or permission changes, it creates a custom-format `pg_dump` backup and verifies that `pg_restore` can list and extract the archive. It then applies pending reviewed migrations, refreshes only the configured runtime role's reviewed privileges, checks those privileges through `DATABASE_URL`, and confirms that existing application-table row counts remain unchanged. It never creates roles, changes passwords, truncates data, or calls `pnpm db:setup`.
-
-The web role receives CRUD access to `user_devices`, read access to imported data, and column-limited inserts on `native_reports`. It cannot write imported ProtonDB reports or summaries, update native reports, or set moderation/publication fields. If the migration role lacks its schema ownership or create grants, the upgrade stops with a diagnostic rather than changing ownership or permissions to make migrations pass. See [database.md](database.md) for configuration, dry-run, backup, and recovery details.
-
-The database upgrade is an operator/deployment step. The web application never runs migrations or grants on a user request.
+The web role receives CRUD access to a user's device records through account-scoped application queries and column-limited inserts on `native_reports`. It cannot update or delete reports or set moderation/publication fields. The web application never runs migrations or grants on a user request. See [database.md](database.md) for the clean baseline and controlled database setup.
 
 ## Tests
 
-Unit and browser checks cover strict parser cases, Windows rejection, reimport provenance, ownership, mandatory report devices, immutable snapshots, and moderation restrictions. PostgreSQL upgrade integration tests use a separate database cloned from the explicitly marked `tuxgg_test`; they never run destructive setup against the normal `tuxgg` database.
+Unit and browser checks cover strict parser cases, Windows rejection, reimport provenance, ownership, mandatory report devices, immutable snapshots, and moderation restrictions. PostgreSQL integration tests require the explicitly marked `tuxgg_test` database; they never run fixture cleanup against the normal `tuxgg` database.

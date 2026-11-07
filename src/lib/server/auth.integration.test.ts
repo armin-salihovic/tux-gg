@@ -237,10 +237,6 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			'SELECT current_user AS role, ' +
 				"has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage, " +
 				"has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read_games, " +
-				"has_table_privilege(current_user, 'public.reports', 'SELECT') AS can_read_reports, " +
-				"has_table_privilege(current_user, 'public.reports', 'INSERT') AS can_write_reports, " +
-				"has_table_privilege(current_user, 'public.reports', 'UPDATE') AS can_update_imported_reports, " +
-				"has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE') AS can_update_summaries, " +
 				"has_table_privilege(current_user, 'public.user', 'SELECT') AS can_read_auth_users, " +
 				"has_table_privilege(current_user, 'public.user', 'UPDATE') AS can_lock_auth_users, " +
 				"has_table_privilege(current_user, 'public.account', 'SELECT') AS can_read_accounts, " +
@@ -267,10 +263,6 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			role: 'tuxgg_web',
 			schema_usage: true,
 			can_read_games: true,
-			can_read_reports: true,
-			can_write_reports: false,
-			can_update_imported_reports: false,
-			can_update_summaries: false,
 			can_read_auth_users: true,
 			can_lock_auth_users: true,
 			can_read_accounts: true,
@@ -351,8 +343,6 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			privilegeProbe.release();
 		}
 		await pool.query('SELECT app_id FROM public.games LIMIT 0');
-		await pool.query('SELECT app_id FROM public.reports LIMIT 0');
-		await pool.query('SELECT app_id FROM public.compatibility_summaries LIMIT 0');
 		auth = getAuth();
 		installSteamMocks();
 	});

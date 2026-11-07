@@ -17,15 +17,9 @@
 			]
 		},
 		{
-			title: 'Imported community reports',
-			paragraphs: [
-				'Imported ProtonDB reports can contain hardware descriptions, launch options, and free-text notes. The source exports do not provide report-author IDs. The importer removes email-shaped strings from displayable text, but this is a limited safeguard and may not detect every personal detail. Do not rely on it as complete anonymization.'
-			]
-		},
-		{
 			title: 'TuxGG community reports',
 			paragraphs: [
-				'If you submit a native report, TuxGG stores the compatibility verdict, platform, optional technical details, report text, and your account ID. It remains visible only in your My Reports page until an operator publishes it. A published report displays your public username and submitted report details on the game page. Do not include personal information.'
+				'If you submit a report, TuxGG stores the compatibility verdict, platform, selected device snapshot, optional technical details, report text, and your account ID. It remains visible only in your My Reports page until an operator publishes it. A published report displays your public username and submitted report details on the game page. Do not include personal information.'
 			]
 		},
 		{

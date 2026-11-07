@@ -3,16 +3,14 @@ import { z } from 'zod';
 import type { PageServerLoad } from './$types';
 import {
 	getGameById,
-	getGameReportFilters,
-	getGameReports,
+	getNativeReportFilters,
 	getPublishedNativeReports
 } from '#lib/server/db/queries.js';
 import { absoluteUrl, plainDescription } from '#lib/server/seo.js';
 import { logDatabaseFailure } from '#lib/server/database-errors.js';
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
 
-const pageSchema = z.coerce.number().int().min(1).max(100_000).catch(1);
-const communityPageSchema = z.coerce.number().int().min(1).max(10_000).catch(1);
+const pageSchema = z.coerce.number().int().min(1).max(10_000).catch(1);
 const dateSchema = z
 	.string()
 	.regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -55,7 +53,6 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 			appId: params.appId,
 			canonical: absoluteUrl(`/games/${params.appId}`),
 			filters: { gpuVendors: [], distributions: [], proton: [] },
-			reportData: null,
 			nativeReportData: null,
 			filtered
 		};
@@ -63,7 +60,6 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 	if (!game) error(404, 'Game not found');
 	if (params.slug !== game.slug) redirect(308, `/games/${game.appId}/${game.slug}${url.search}`);
 
-	let reportData = null;
 	let nativeReportData = null;
 	let filters = {
 		gpuVendors: [] as string[],
@@ -71,8 +67,8 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 		proton: [] as { value: string; label: string }[]
 	};
 	try {
-		[reportData, filters] = await Promise.all([
-			getGameReports(params.appId, {
+		[nativeReportData, filters] = await Promise.all([
+			getPublishedNativeReports(params.appId, {
 				page,
 				gpuVendor,
 				distribution,
@@ -81,28 +77,19 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 				since: validSince,
 				until: validUntil
 			}),
-			getGameReportFilters(params.appId)
+			getNativeReportFilters(params.appId)
 		]);
 	} catch {
-		logDatabaseFailure('game report queries');
-	}
-	try {
-		nativeReportData = await getPublishedNativeReports(
-			params.appId,
-			communityPageSchema.parse(url.searchParams.get('communityPage') ?? '1')
-		);
-	} catch {
-		logDatabaseFailure('native community report query');
+		logDatabaseFailure('native community report queries');
 	}
 	const canonical = absoluteUrl(`/games/${game.appId}/${game.slug}`);
 	const description = plainDescription(
-		`${game.title}: see the TuxGG compatibility tier, Linux and Steam Deck reports, Proton versions, hardware, and workarounds.`
+		`${game.title}: Steam store information and player-submitted Linux and Steam Deck compatibility reports.`
 	);
 	return {
 		available: true,
 		appId: params.appId,
 		game,
-		reportData,
 		nativeReportData,
 		filters,
 		query: {

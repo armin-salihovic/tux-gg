@@ -22,15 +22,13 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:setup": "python scripts/setup_database.py",
-		"db:upgrade": "python scripts/upgrade_database.py",
+		"db:backup:games": "node scripts/backup_games.mjs",
+		"db:restore:games": "node scripts/restore_games.mjs",
+		"steam:sync": "node scripts/sync_steam_metadata.mjs",
+		"steam:discover": "node scripts/discover_steam_catalog.mjs",
 		"db:grant": "python scripts/setup_database.py --grant-only",
 		"db:test:prepare": "python scripts/prepare_test_database.py",
-		"db:test:seed-e2e": "python scripts/seed_e2e_database.py",
-		"import:inspect": "python importer/tuxgg_importer.py inspect",
-		"import:validate": "python importer/tuxgg_importer.py validate",
-		"import:sample": "python importer/tuxgg_importer.py sample-import",
-		"import:all": "python importer/tuxgg_importer.py import",
-		"import:stats": "python importer/tuxgg_importer.py stats"
+		"db:test:seed-e2e": "python scripts/seed_e2e_database.py"
 	},
 	"dependencies": {
 		"@sveltejs/adapter-node": "^6.0.1",

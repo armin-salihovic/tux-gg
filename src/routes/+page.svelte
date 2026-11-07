@@ -1,32 +1,23 @@
 <script lang="ts">
 	import GameCard from '#lib/components/GameCard.svelte';
 	import GameSearch from '#lib/components/GameSearch.svelte';
-	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	import type { PageData } from './$types';
 	let { data }: { data: PageData } = $props();
-	const tiers = [
-		{ key: 'platinum', label: 'Platinum', copy: 'Strong out-of-box results' },
-		{ key: 'gold', label: 'Gold', copy: 'Works with small adjustments' },
-		{ key: 'silver', label: 'Silver', copy: 'Playable with some tuning' },
-		{ key: 'bronze', label: 'Bronze', copy: 'Runs, with notable issues' },
-		{ key: 'borked', label: 'Borked', copy: 'Current reports show failures' },
-		{ key: 'unknown', label: 'Unknown', copy: 'More recent reports needed' }
-	];
 </script>
 
 <svelte:head>
-	<title>Linux Game Compatibility & Reports | TuxGG</title>
+	<title>Steam Games for Linux & Steam Deck | TuxGG</title>
 	<meta
 		name="description"
-		content="Find Linux and Steam Deck game compatibility, compare Proton versions, and read real community reports on TuxGG."
+		content="Browse Steam games with player-submitted Linux and Steam Deck compatibility reports."
 	/>
 	<link rel="canonical" href={data.canonical} />
 	<meta property="og:type" content="website" />
-	<meta property="og:title" content="Linux Game Compatibility & Reports | TuxGG" />
+	<meta property="og:title" content="Steam Games for Linux & Steam Deck | TuxGG" />
 	<meta
 		property="og:description"
-		content="Search Linux and Steam Deck compatibility reports, Proton versions, hardware, and workarounds."
+		content="Search the Steam game catalog and read player-submitted compatibility reports."
 	/>
 	<meta property="og:url" content={data.canonical} />
 	<meta property="og:image" content={data.ogImage} />
@@ -34,10 +25,10 @@
 	<meta property="og:image:type" content="image/png" />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
-	<meta name="twitter:title" content="Linux Game Compatibility & Reports | TuxGG" />
+	<meta name="twitter:title" content="Steam Games for Linux & Steam Deck | TuxGG" />
 	<meta
 		name="twitter:description"
-		content="Search Linux and Steam Deck compatibility reports, Proton versions, hardware, and workarounds."
+		content="Search the Steam game catalog and read player-submitted compatibility reports."
 	/>
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:image" content={data.ogImage} />
@@ -62,8 +53,8 @@
 				Know before you <span class="text-mint">launch.</span>
 			</h1>
 			<p class="mt-5 max-w-2xl leading-7 text-base text-slate-300 sm:text-lg">
-				Search real Linux and Steam Deck reports. See what works, which Proton builds people used,
-				and where the rough edges are.
+				Search the preserved Steam game catalog, see store details, and read what players report
+				about Linux and Steam Deck compatibility.
 			</p>
 			<div class="mt-8 max-w-2xl"><GameSearch /></div>
 			<div class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-400">
@@ -90,7 +81,7 @@
 		<span class="grid size-11 place-items-center rounded-xl bg-lime/10 text-lg text-lime">▤</span>
 		<div>
 			<div class="text-2xl font-extrabold text-white">{data.totalReports.toLocaleString()}</div>
-			<div class="text-xs text-muted">imported reports</div>
+			<div class="text-xs text-muted">published community reports</div>
 		</div>
 	</div>
 	<div class="surface flex items-center gap-4 rounded-2xl p-5">
@@ -99,7 +90,7 @@
 		>
 		<div>
 			<div class="text-sm font-bold text-white">Desktop Linux + Steam Deck</div>
-			<div class="text-xs text-muted">One searchable compatibility catalog</div>
+			<div class="text-xs text-muted">Steam AppIDs with preserved game metadata</div>
 		</div>
 	</div>
 </section>
@@ -117,35 +108,7 @@
 <section class="container-shell mt-16">
 	<div class="flex flex-wrap items-end justify-between gap-4">
 		<div>
-			<p class="eyebrow">A quick read on compatibility</p>
-			<h2 class="mt-2 text-2xl font-extrabold tracking-tight text-white">
-				Clear tiers, with context
-			</h2>
-		</div>
-		<a class="text-sm font-semibold text-mint hover:text-lime" href="/methodology"
-			>How TuxGG scores games <span aria-hidden="true">→</span></a
-		>
-	</div>
-	<div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-		{#each tiers as tier}
-			<a
-				class="surface flex items-center justify-between gap-4 rounded-2xl p-4 no-underline transition hover:border-white/20"
-				href={`/games?tier=${tier.key}`}
-			>
-				<div>
-					<div class="font-bold text-white">{tier.label}</div>
-					<p class="mt-1 text-xs text-muted">{tier.copy}</p>
-				</div>
-				<CompatibilityBadge tier={tier.key} />
-			</a>
-		{/each}
-	</div>
-</section>
-
-<section class="container-shell mt-16">
-	<div class="flex flex-wrap items-end justify-between gap-4">
-		<div>
-			<p class="eyebrow">From the real report corpus</p>
+			<p class="eyebrow">From the Steam catalog</p>
 			<h2 class="mt-2 text-2xl font-extrabold tracking-tight text-white">Popular games</h2>
 		</div>
 		<a class="text-sm font-semibold text-mint hover:text-lime" href="/games?sort=reports"
@@ -160,7 +123,7 @@
 		<div
 			class="mt-6 rounded-2xl border border-dashed border-line px-6 py-10 text-center text-sm text-muted"
 		>
-			No imported game reports yet. The catalog will fill in after the first import.
+			No games are available yet. Restore the saved catalog or sync Steam store metadata.
 		</div>
 	{/if}
 </section>
@@ -169,12 +132,11 @@
 	<div class="surface rounded-3xl p-6 sm:p-8">
 		<p class="eyebrow">Built for useful details</p>
 		<h2 class="mt-3 text-2xl font-extrabold tracking-tight text-white">
-			Compatibility is more than a badge.
+			Game details stay useful.
 		</h2>
 		<p class="mt-3 max-w-xl text-sm leading-7 text-muted">
-			Compare the Linux distribution, GPU, graphics driver, Proton variant, launch options, and
-			known issues reported by players. TuxGG keeps original ProtonDB verdicts visible beside its
-			own recency-weighted summary.
+			Steam provides game titles, artwork, descriptions, developers, and release information. TuxGG
+			keeps that catalog separate from player-submitted compatibility reports and system details.
 		</p>
 		<a
 			class="mt-6 inline-flex items-center gap-2 text-sm font-bold text-mint hover:text-lime"
@@ -186,7 +148,7 @@
 		<h2 class="mt-3 text-2xl font-extrabold tracking-tight text-white">Your setup matters.</h2>
 		<p class="mt-3 text-sm leading-7 text-slate-300">
 			Steam users can submit Linux and Steam Deck reports from any game page. Reports are reviewed
-			before they appear publicly, and stay separate from imported ProtonDB data.
+			before they appear publicly, and each report remains tied to its author and device snapshot.
 		</p>
 		<a
 			class="mt-6 inline-flex items-center gap-2 text-sm font-bold text-lime hover:text-mint"
@@ -198,8 +160,8 @@
 <section class="container-shell mt-16 mb-20">
 	<div class="flex flex-wrap items-end justify-between gap-4">
 		<div>
-			<p class="eyebrow">Fresh activity</p>
-			<h2 class="mt-2 text-2xl font-extrabold tracking-tight text-white">Recently reported</h2>
+			<p class="eyebrow">Fresh catalog data</p>
+			<h2 class="mt-2 text-2xl font-extrabold tracking-tight text-white">Recently updated</h2>
 		</div>
 	</div>
 	{#if data.recent.length}
@@ -222,16 +184,15 @@
 							{game.title ?? `Steam app ${game.appId}`}
 						</div>
 						<div class="mt-1 text-xs text-muted">
-							{game.reportCount.toLocaleString()} imported reports
+							{game.reportCount.toLocaleString()} community reports
 						</div>
 					</div>
-					<span class="shrink-0"><CompatibilityBadge tier={game.tier} /></span>
 				</a>
 			{/each}
 		</div>
 	{:else if data.available}
 		<p class="mt-6 text-sm text-muted">
-			Recent game activity will appear here after reports are imported.
+			Steam catalog updates will appear here as metadata is refreshed.
 		</p>
 	{/if}
 </section>

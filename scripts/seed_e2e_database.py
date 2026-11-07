@@ -9,9 +9,9 @@ import sys
 EXPECTED_DATABASE = "tuxgg_test"
 MARKER_VALUE = "tuxgg_disposable_test_database_v1"
 GAMES = (
-    ("440", "Team Fortress 2", "team-fortress-2", "platinum", 12),
-    ("570", "Dota 2", "dota-2", "gold", 4),
-    ("730", "Counter-Strike 2", "counter-strike-2", "unknown", 2),
+	("440", "Team Fortress 2", "team-fortress-2"),
+	("570", "Dota 2", "dota-2"),
+	("730", "Counter-Strike 2", "counter-strike-2"),
 )
 
 
@@ -31,18 +31,11 @@ def main() -> int:
             marker = cur.fetchone()
             if marker is None or marker[0] != MARKER_VALUE:
                 raise RuntimeError("Refusing to seed fixtures without the disposable database marker.")
-            for app_id, title, slug, tier, report_count in GAMES:
+            for app_id, title, slug in GAMES:
                 cur.execute(
-                    "INSERT INTO games (app_id, title, slug) VALUES (%s, %s, %s) "
+                    "INSERT INTO games (app_id, title, slug, metadata) VALUES (%s, %s, %s, '{}'::jsonb) "
                     "ON CONFLICT (app_id) DO UPDATE SET title = EXCLUDED.title, slug = EXCLUDED.slug, updated_at = now()",
                     (app_id, title, slug),
-                )
-                cur.execute(
-                    "INSERT INTO compatibility_summaries (app_id, tier, report_count, scored_report_count) "
-                    "VALUES (%s, %s, %s, %s) ON CONFLICT (app_id) DO UPDATE SET "
-                    "tier = EXCLUDED.tier, report_count = EXCLUDED.report_count, "
-                    "scored_report_count = EXCLUDED.scored_report_count, calculated_at = now()",
-                    (app_id, tier, report_count, report_count),
                 )
         print("Seeded deterministic game fixtures in tuxgg_test.")
         return 0

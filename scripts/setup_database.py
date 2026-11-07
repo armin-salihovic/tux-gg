@@ -21,9 +21,6 @@ LEGACY_ROLE = "tuxgg_app"
 
 TABLES = (
     "games",
-    "reports",
-    "import_batches",
-    "compatibility_summaries",
     "user",
     "session",
     "account",
@@ -32,12 +29,9 @@ TABLES = (
     "user_devices",
     "__drizzle_migrations",
 )
-SEQUENCES = ("reports_id_seq", "import_batches_id_seq")
+SEQUENCES: tuple[str, ...] = ()
 WEB_PRIVILEGES = {
     "games": "SELECT",
-    "reports": "SELECT",
-    "import_batches": "SELECT",
-    "compatibility_summaries": "SELECT",
     "user": "SELECT, INSERT, UPDATE",
     "session": "SELECT, INSERT, UPDATE, DELETE",
     "account": "SELECT, INSERT, UPDATE, DELETE",
@@ -71,9 +65,6 @@ NATIVE_REPORT_INSERT_COLUMNS = (
 )
 IMPORTER_PRIVILEGES = {
     "games": "SELECT, INSERT, UPDATE",
-    "reports": "SELECT, INSERT, UPDATE",
-    "import_batches": "SELECT, INSERT, UPDATE",
-    "compatibility_summaries": "SELECT, INSERT, UPDATE, DELETE",
 }
 
 
@@ -173,7 +164,7 @@ def connect(url: str):
         import psycopg
     except ImportError as exc:
         raise RuntimeError(
-            "Install importer dependencies first: python -m pip install -r importer/requirements.txt"
+            "Install database setup dependencies first: python -m pip install -r scripts/requirements.txt"
         ) from exc
     return psycopg.connect(url, autocommit=True)
 

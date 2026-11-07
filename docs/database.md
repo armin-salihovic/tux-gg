@@ -1,62 +1,43 @@
-# Database setup and upgrades
+# Database setup and recovery
 
-## New installation
+## New database
 
-1. Copy `.env.example` to `.env` and fill the database connections privately.
-2. Install the Python database dependencies with `python -m pip install -r importer/requirements.txt`.
-3. Run `pnpm db:setup` once to provision the new database and dedicated roles.
-4. Run `pnpm db:upgrade` to create the schema, apply reviewed migrations, grant the configured runtime role only its reviewed privileges, and verify access.
+1. Copy `.env.example` to `.env` and set private PostgreSQL URLs.
+2. Install Python setup dependencies: `python -m pip install -r scripts/requirements.txt`.
+3. Set `PGADMIN_URL` to an administrator connection on PostgreSQL's `postgres` database.
+4. Run `pnpm db:setup` once to create the `tuxgg` database and the web, catalog-writer, and migration roles.
+5. Run `pnpm db:migrate` to apply the baseline schema.
+6. Restore the verified catalog with `pnpm db:restore:games -- <games.csv>`.
 
-`pnpm db:setup` is for initial provisioning. Do not run it during an ordinary application update or as part of `pnpm db:upgrade`.
+## Database roles
 
-## Existing installation
+- `tuxgg_web` uses `DATABASE_URL`; it reads games, can insert only user-submitted native report fields, manages Better Auth records and private devices, and cannot moderate reports or edit the games catalog.
+- `tuxgg_importer` uses `IMPORTER_DATABASE_URL`; it can select and upsert games only. It cannot read account data.
+- `tuxgg_migrator` uses `MIGRATION_DATABASE_URL`; it owns the schema and applies Drizzle migrations.
+- A separate operator connection is used for report moderation.
 
-After pulling new code, point the private configuration at the existing installation and run:
+`pnpm db:grant` reapplies the reviewed grants after a schema change. `pnpm db:setup` is an operator provisioning command, not a routine application update.
 
-```powershell
-pnpm db:upgrade
+## Full games backup
+
+Before any legacy database cleanup, run `pnpm db:backup:games`. The command requires a read-capable `DATABASE_URL` to `tuxgg` and a `PGADMIN_URL` used only for a temporary verification database. It exports every original non-generated game column, verifies the row count and unique AppIDs, checks the custom archive, restores that archive into a uniquely named disposable database, compares all AppIDs and representative JSON/timestamp values, computes SHA-256 checksums, and retains both output files. The source database stays read-only.
+
+Backups are saved outside Git under `%USERPROFILE%\.tuxgg-backups` on Windows or `~/.tuxgg-backups` on other systems. `TUXGG_BACKUP_DIR` can select another external directory. Install PostgreSQL client tools or Docker. The command prints the paths, file sizes, checksums, and verification results.
+
+To re-import the games CSV into the new schema:
+
+```sh
+pnpm db:restore:games -- "<path-to-tuxgg-games-YYYYMMDD.csv>"
 ```
 
-The required variables are:
+The restore is idempotent on `app_id`. It keeps existing non-empty titles and artwork when the CSV value is empty, recursively merges JSONB without discarding unknown keys, and keeps the earliest `created_at` and latest `updated_at` on conflicts.
 
-- `DATABASE_URL`: the actual web runtime credential, normally `tuxgg_web`; an existing `tuxgg_app` login is supported when that is still the configured runtime role.
-- `MIGRATION_DATABASE_URL`: the dedicated `tuxgg_migrator` login on the same `tuxgg` database.
-- `PGADMIN_URL`: the PostgreSQL maintenance connection on the same server, connected to the `postgres` database. The configured administrator must be able to apply reviewed table grants; the current implementation requires a PostgreSQL superuser.
+## Existing legacy database
 
-The command checks `current_database()` and `current_user` for each connection, verifies that they reach the same PostgreSQL installation and intended database, and refuses `postgres`, `tuxgg_test`, and other databases in normal mode. It never prints passwords or complete database URLs. Shell environment variables take precedence over `.env`; the script never edits `.env`, generates passwords, creates roles, or changes authentication credentials.
-
-Before applying migrations, it checks that the database's Drizzle history matches the checked-in migration journal and SQL hashes. Existing application tables without a migration ledger, an unknown ledger entry, or a changed applied migration fail safely for manual review. Pending SQL is checked for destructive statements and only reviewed additive migrations are run. Migration permissions are checked before applying; the command does not change table ownership to work around an underprivileged migration login.
-
-After migrations, the command applies least-privilege grants only to the configured runtime role. It repairs `user_devices` permissions even when `0003_user_devices.sql` is already recorded as applied. It preserves column-limited native report inserts, removes runtime write access to imported ProtonDB tables and compatibility summaries, and verifies real PostgreSQL privileges through `DATABASE_URL`. Any missing or excessive privilege is reported by table and operation.
-
-The upgrade is idempotent. An already-current database with correct grants succeeds without making changes or creating another backup. When migrations or grants need to change, a verified backup is created first. After schema changes, the tool compares row counts for existing games, imported reports, summaries, auth data, and native reports. Migrations and permission updates never rebuild compatibility summaries.
-
-## Dry run
-
-Inspect the target, migration state, pending SQL, and grant changes without applying anything:
-
-```powershell
-pnpm db:upgrade --dry-run
-```
-
-Dry run does not create a backup. Do not use `--allow-test-database` for normal deployments; that option exists only for marked disposable PostgreSQL integration tests.
-
-## Backup and recovery
-
-When a live change is needed, `db:upgrade` runs `pg_dump` in custom archive format, then uses `pg_restore` to list and extract the complete archive before changing the database. By default backups are stored in `.tuxgg-backups` under the current user's home directory. Set `TUXGG_BACKUP_DIR` to use another secured location. The backup is retained after success. Install PostgreSQL client utilities and keep `pg_dump` and `pg_restore` on `PATH`; Windows users can set `TUXGG_PG_DUMP` and `TUXGG_PG_RESTORE` to their executable paths.
-
-To inspect or test a backup, restore it to a separate review database. Do not restore over the live database until the application is stopped and the recovery target has been independently confirmed.
-
-```powershell
-pg_restore --list "C:\path\to\tuxgg-YYYYMMDDTHHMMSS.dump"
-createdb tuxgg_restore_review
-pg_restore --no-owner --no-acl --dbname=tuxgg_restore_review "C:\path\to\tuxgg-YYYYMMDDTHHMMSS.dump"
-```
-
-The archive contains the database schema and rows, not PostgreSQL roles or their passwords. Existing role credentials remain unchanged. Keep backups access-restricted because they contain account and community report data.
-
-If migration succeeds but a later grant check fails, the database is not reset or rolled back automatically. Review the diagnostic, correct the missing maintenance/migration permission, and rerun `pnpm db:upgrade`; the recorded migration will not be duplicated, and the grant repair is independently repeatable.
+The checked-in baseline is for a clean schema. It does not automatically reset a database, delete imported-report tables, or convert an old Drizzle migration ledger. For a database with the previous schema, create and verify the full games backup first. Review an explicit cutover plan for auth, devices, and native reports before applying any schema cleanup. No destructive cleanup is run by `pnpm db:backup:games` or `pnpm db:migrate`.
 
 ## Disposable integration database
 
-`scripts/prepare_test_database.py` creates or verifies only the marked `tuxgg_test` database. The upgrade integration suite clones that marked database into a uniquely named temporary database with its own marker and only applies destructive fixture setup to that disposable clone. Normal `pnpm db:upgrade` refuses all test database names.
+`pnpm db:test:prepare` creates or verifies only `tuxgg_test` and places a safety marker before integration tests use it. Point `TEST_DATABASE_URL` to an administrator connection for this disposable database. Tests that use application roles require `DATABASE_URL` to use `tuxgg_web` and `MIGRATION_DATABASE_URL` to use `tuxgg_migrator` on `tuxgg_test`. Do not point test commands at the live database.
+
+The CI workflow provisions an ephemeral PostgreSQL service, applies the baseline independently to `tuxgg` and `tuxgg_test`, verifies database grants, and runs auth, native-report, device, and browser checks.

@@ -114,7 +114,7 @@ test('login page distinguishes a network failure from an HTTP error', async ({ p
 
 test('public policy pages are available and robots lists the sitemap', async ({ page }) => {
 	await page.goto('/methodology');
-	await expect(page.getByRole('heading', { name: 'TuxGG rating methodology' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'How TuxGG reports work' })).toBeVisible();
 	const robots = await page.request.get('/robots.txt');
 	expect(robots.status()).toBe(200);
 	expect(await robots.text()).toContain('Sitemap: http://localhost:5173/sitemap.xml');

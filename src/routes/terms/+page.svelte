@@ -12,13 +12,13 @@
 		{
 			title: 'Third-party services and data',
 			paragraphs: [
-				'Steam OpenID sign-in is provided by Steam. Imported report data is attributed to ProtonDB and remains subject to the source database and content licenses. Steam store links are provided for convenience. Third-party services have their own terms and privacy practices.'
+				'Steam OpenID sign-in and Steam store metadata are provided by Steam services. Steam store links and artwork are provided for convenience and remain subject to Steam’s terms and asset policies. Third-party services have their own terms and privacy practices.'
 			]
 		},
 		{
 			title: 'Contributions',
 			paragraphs: [
-				'Native community report publishing is not currently available. If it is enabled later, submission terms, moderation, removal, and licensing information must be presented before a report is accepted.'
+				'You may submit reports describing your own game experience and setup. Reports begin in private review, and operators may publish, hide, or remove them. Do not submit personal information or content you do not have permission to share.'
 			]
 		},
 		{

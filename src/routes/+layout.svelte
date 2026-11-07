@@ -28,8 +28,7 @@
 					>Tux<span class="text-mint">GG</span></a
 				>
 				<p class="mt-2 max-w-xl text-xs leading-5 text-muted">
-					Community-sourced Linux gaming compatibility, with imported ProtonDB reports clearly
-					identified.
+					A preserved Steam game catalog with player-submitted Linux compatibility reports.
 				</p>
 			</div>
 			<div class="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-400">
@@ -39,9 +38,6 @@
 				<a class="hover:text-mint" href="/community-rules">Community rules</a>
 				<a class="hover:text-mint" href="/contact">Contact</a>
 			</div>
-			<p class="text-[0.68rem] text-slate-600 sm:col-span-2">
-				ProtonDB is a source of imported reports. TuxGG ratings are independently calculated.
-			</p>
 		</div>
 	</footer>
 </div>

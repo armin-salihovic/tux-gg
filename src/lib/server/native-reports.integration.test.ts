@@ -93,9 +93,9 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 		expect((await getMyNativeReports('another-user')).reports.map((row) => row.id)).not.toContain(
 			reportId
 		);
-		expect((await getPublishedNativeReports('440')).reports.map((row) => row.id)).not.toContain(
-			reportId
-		);
+		expect(
+			(await getPublishedNativeReports('440', { page: 1 })).reports.map((row) => row.id)
+		).not.toContain(reportId);
 
 		const steamDeck = parseSteamSystemInfo(
 			'Computer Information:\nManufacturer: Valve\nModel: Galileo\nOperating System:\nSteamOS Holo (64 bit)\nProcessor Information:\nCPU Brand: AMD Custom APU 0406\nVideo Card:\nDriver: AMD AMD Custom GPU 0406 (RADV VANGOGH)\nMemory:\nRAM: 16384 Mb'

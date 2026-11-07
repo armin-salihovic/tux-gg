@@ -1,27 +1,17 @@
-import { and, asc, count, desc, eq, gte, lt, or, sql } from 'drizzle-orm';
-import { getDb } from '#lib/server/db/db.js';
-import {
-	authAccount,
-	authUser,
-	compatibilitySummaries,
-	games,
-	nativeReports,
-	reports
-} from '#lib/server/db/schema.js';
-import type { CompatibilityTier } from '#lib/scoring.js';
-import { MIN_INDEXABLE_REPORTS } from '#lib/seo-constants.js';
+import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { getDb, getPool } from '#lib/server/db/db.js';
+import { authAccount, authUser, games, nativeReports } from '#lib/server/db/schema.js';
 
-export type CatalogSort = 'title' | 'reports' | 'recent' | 'tier';
+export type CatalogSort = 'title' | 'reports' | 'recent';
 
 export interface GameQuery {
 	q: string;
-	tier?: CompatibilityTier;
 	sort: CatalogSort;
 	page: number;
 	pageSize?: number;
 }
 
-export interface ReportFilters {
+export interface NativeReportFilters {
 	page: number;
 	pageSize?: number;
 	gpuVendor?: string;
@@ -32,128 +22,71 @@ export interface ReportFilters {
 	until?: Date;
 }
 
-const scoreOrder = sql`CASE ${compatibilitySummaries.tier}
-	WHEN 'platinum' THEN 1 WHEN 'gold' THEN 2 WHEN 'silver' THEN 3
-	WHEN 'bronze' THEN 4 WHEN 'borked' THEN 5 ELSE 6 END`;
+const PUBLISHED_REPORTS = `
+	SELECT app_id,
+	       count(*)::int AS report_count,
+	       count(*) FILTER (WHERE verdict = 'yes')::int AS yes_count,
+	       count(*) FILTER (WHERE verdict = 'no')::int AS no_count,
+	       max(coalesce(published_at, created_at)) AS last_report_at
+	FROM public.native_reports
+	WHERE moderation_state = 'published'
+	GROUP BY app_id`;
 
-const visibleImportedReport = sql`(
-	EXISTS (
-		SELECT 1 FROM import_batches report_batch
-		WHERE report_batch.id = ${reports.importedBatchId}
-			AND report_batch.status = 'complete' AND report_batch.import_mode = 'full'
-	) OR EXISTS (
-		SELECT 1 FROM import_batches sample_batch
-		JOIN import_batches completed_full_batch
-			ON completed_full_batch.source_checksum = sample_batch.source_checksum
-			AND completed_full_batch.source_schema = sample_batch.source_schema
-		WHERE sample_batch.id = ${reports.importedBatchId}
-			AND sample_batch.status = 'complete' AND sample_batch.import_mode = 'sample'
-			AND completed_full_batch.status = 'complete' AND completed_full_batch.import_mode = 'full'
-	)
-)`;
-
-const HOME_STATS_CACHE_MS = 60_000;
-let homeStatsCache:
-	| {
-			expiresAt: number;
-			value: { totalGames: number; totalReports: number; tiers: Record<string, number> };
-	  }
-	| undefined;
-
-async function getCachedHomeStats(db: ReturnType<typeof getDb>) {
-	if (homeStatsCache && homeStatsCache.expiresAt > Date.now()) return homeStatsCache.value;
-
-	const tierRows = await db
-		.select({
-			tier: compatibilitySummaries.tier,
-			games: count(),
-			reports: sql<number>`coalesce(sum(${compatibilitySummaries.reportCount}), 0)`.mapWith(Number)
-		})
-		.from(compatibilitySummaries)
-		.groupBy(compatibilitySummaries.tier);
-	const value = {
-		totalGames: tierRows.reduce((total, row) => total + row.games, 0),
-		totalReports: tierRows.reduce((total, row) => total + row.reports, 0),
-		tiers: Object.fromEntries(tierRows.map((row) => [row.tier, row.games]))
-	};
-	homeStatsCache = { expiresAt: Date.now() + HOME_STATS_CACHE_MS, value };
-	return value;
+function catalogConditions(term: string) {
+	if (!term) return '';
+	return `AND (
+		g.app_id = $1
+		OR g.search_vector @@ websearch_to_tsquery('simple', $1)
+		OR position(lower($1) in lower(coalesce(g.title, ''))) > 0
+		OR lower(coalesce(g.title, '')) % lower($1)
+	)`;
 }
 
 export async function getCatalog(query: GameQuery) {
-	const db = getDb();
 	const pageSize = Math.min(48, Math.max(1, query.pageSize ?? 24));
 	const page = Math.max(1, query.page);
-	const conditions = [];
 	const term = query.q.trim().slice(0, 100);
-
-	if (term) {
-		const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
-		conditions.push(
-			or(
-				eq(games.appId, term),
-				sql`${games.searchVector} @@ websearch_to_tsquery('simple', ${term})`,
-				sql`lower(${games.title}) LIKE lower(${pattern}) ESCAPE ${'\\'}`,
-				sql`lower(${games.title}) % lower(${term})`
-			)!
-		);
-	}
-	if (query.tier) conditions.push(eq(compatibilitySummaries.tier, query.tier));
-	const where = conditions.length ? and(...conditions) : undefined;
-
-	const totalQuery = db
-		.select({ total: count() })
-		.from(games)
-		.innerJoin(compatibilitySummaries, eq(compatibilitySummaries.appId, games.appId));
-	const [{ total }] = where ? await totalQuery.where(where) : await totalQuery;
-
+	const where = catalogConditions(term);
+	const values = term ? [term] : [];
+	const totalResult = await getPool().query<{ total: number }>(
+		`WITH report_stats AS (${PUBLISHED_REPORTS})
+		 SELECT count(*)::int AS total
+		 FROM public.games AS g
+		 LEFT JOIN report_stats AS r ON r.app_id = g.app_id
+		 WHERE true ${where}`,
+		values
+	);
+	const total = totalResult.rows[0]?.total ?? 0;
 	const rank = term
-		? sql<number>`CASE WHEN ${games.appId} = ${term} THEN 100
-			ELSE ts_rank(${games.searchVector}, websearch_to_tsquery('simple', ${term}))
-				+ similarity(lower(coalesce(${games.title}, '')), lower(${term})) END`.mapWith(Number)
-		: sql<number>`0`.mapWith(Number);
-
-	const order = term
-		? [desc(rank), desc(compatibilitySummaries.reportCount), asc(games.title)]
-		: query.sort === 'reports'
-			? [desc(compatibilitySummaries.reportCount), asc(games.title)]
+		? `CASE WHEN g.app_id = $1 THEN 100::real
+			ELSE ts_rank(g.search_vector, websearch_to_tsquery('simple', $1))
+				+ similarity(lower(coalesce(g.title, '')), lower($1)) END`
+		: '0::real';
+	const order =
+		query.sort === 'reports'
+			? 'report_count DESC, last_report_at DESC NULLS LAST, g.title ASC NULLS LAST, g.app_id ASC'
 			: query.sort === 'recent'
-				? [desc(compatibilitySummaries.lastReportAt), desc(compatibilitySummaries.reportCount)]
-				: query.sort === 'tier'
-					? [
-							asc(scoreOrder),
-							desc(compatibilitySummaries.weightedScore),
-							desc(compatibilitySummaries.reportCount)
-						]
-					: [asc(games.title), asc(games.appId)];
-
-	const rows = await db
-		.select({
-			appId: games.appId,
-			title: games.title,
-			slug: games.slug,
-			artworkUrl: games.artworkUrl,
-			tier: compatibilitySummaries.tier,
-			reportCount: compatibilitySummaries.reportCount,
-			yesCount: compatibilitySummaries.yesCount,
-			noCount: compatibilitySummaries.noCount,
-			weightedScore: compatibilitySummaries.weightedScore,
-			lastReportAt: compatibilitySummaries.lastReportAt,
-			rank
-		})
-		.from(games)
-		.innerJoin(compatibilitySummaries, eq(compatibilitySummaries.appId, games.appId))
-		.where(where)
-		.orderBy(...order)
-		.limit(pageSize)
-		.offset((page - 1) * pageSize);
-
+				? 'last_report_at DESC NULLS LAST, g.updated_at DESC, g.title ASC NULLS LAST, g.app_id ASC'
+				: term
+					? 'rank DESC, report_count DESC, g.title ASC NULLS LAST, g.app_id ASC'
+					: 'g.title ASC NULLS LAST, g.app_id ASC';
+	const pagination = term ? 'LIMIT $2 OFFSET $3' : 'LIMIT $1 OFFSET $2';
+	const rows = await getPool().query(
+		`WITH report_stats AS (${PUBLISHED_REPORTS})
+		 SELECT g.app_id AS "appId", g.title, g.slug, g.artwork_url AS "artworkUrl",
+		        coalesce(r.report_count, 0)::int AS "reportCount",
+		        coalesce(r.yes_count, 0)::int AS "yesCount",
+		        coalesce(r.no_count, 0)::int AS "noCount",
+		        r.last_report_at AS "lastReportAt", ${rank} AS rank
+		 FROM public.games AS g
+		 LEFT JOIN report_stats AS r ON r.app_id = g.app_id
+		 WHERE true ${where}
+		 ORDER BY ${order}
+		 ${pagination}`,
+		term ? [term, pageSize, (page - 1) * pageSize] : [pageSize, (page - 1) * pageSize]
+	);
 	return {
-		games: rows.map((row) => ({
-			...row,
-			tier: row.tier ?? 'unknown',
-			reportCount: row.reportCount ?? 0
-		})),
+		games: rows.rows.map((row) => ({ ...row, rank: Number(row.rank) })),
 		total,
 		page,
 		pageSize,
@@ -162,131 +95,126 @@ export async function getCatalog(query: GameQuery) {
 }
 
 export async function getHomeData() {
-	const db = getDb();
-	const [popular, recent, stats] = await Promise.all([
-		db
-			.select({
-				appId: games.appId,
-				title: games.title,
-				slug: games.slug,
-				artworkUrl: games.artworkUrl,
-				tier: compatibilitySummaries.tier,
-				reportCount: compatibilitySummaries.reportCount,
-				weightedScore: compatibilitySummaries.weightedScore
-			})
-			.from(games)
-			.innerJoin(compatibilitySummaries, eq(compatibilitySummaries.appId, games.appId))
-			.orderBy(desc(compatibilitySummaries.reportCount), desc(compatibilitySummaries.lastReportAt))
-			.limit(8),
-		db
-			.select({
-				appId: games.appId,
-				title: games.title,
-				slug: games.slug,
-				artworkUrl: games.artworkUrl,
-				tier: compatibilitySummaries.tier,
-				reportCount: compatibilitySummaries.reportCount,
-				lastReportAt: compatibilitySummaries.lastReportAt
-			})
-			.from(games)
-			.innerJoin(compatibilitySummaries, eq(compatibilitySummaries.appId, games.appId))
-			.orderBy(desc(compatibilitySummaries.lastReportAt))
-			.limit(6),
-		getCachedHomeStats(db)
+	const pool = getPool();
+	const [totals, popular, recent] = await Promise.all([
+		pool.query<{ totalGames: number; totalReports: number }>(
+			`SELECT (SELECT count(*)::int FROM public.games) AS "totalGames",
+			        (SELECT count(*)::int FROM public.native_reports WHERE moderation_state = 'published') AS "totalReports"`
+		),
+		pool.query(
+			`WITH report_stats AS (${PUBLISHED_REPORTS})
+			 SELECT g.app_id AS "appId", g.title, g.slug, g.artwork_url AS "artworkUrl",
+			        coalesce(r.report_count, 0)::int AS "reportCount",
+			        coalesce(r.yes_count, 0)::int AS "yesCount",
+			        coalesce(r.no_count, 0)::int AS "noCount",
+			        r.last_report_at AS "lastReportAt"
+			 FROM public.games AS g LEFT JOIN report_stats AS r ON r.app_id = g.app_id
+			 ORDER BY coalesce(r.report_count, 0) DESC, r.last_report_at DESC NULLS LAST,
+			          g.title ASC NULLS LAST, g.app_id ASC LIMIT 8`
+		),
+		pool.query(
+			`WITH report_stats AS (${PUBLISHED_REPORTS})
+			 SELECT g.app_id AS "appId", g.title, g.slug, g.artwork_url AS "artworkUrl",
+			        coalesce(r.report_count, 0)::int AS "reportCount",
+			        coalesce(r.yes_count, 0)::int AS "yesCount",
+			        coalesce(r.no_count, 0)::int AS "noCount",
+			        r.last_report_at AS "lastReportAt"
+			 FROM public.games AS g LEFT JOIN report_stats AS r ON r.app_id = g.app_id
+			 ORDER BY coalesce(r.last_report_at, g.updated_at) DESC, g.app_id ASC LIMIT 6`
+		)
 	]);
 	return {
-		popular,
-		recent,
-		...stats
+		popular: popular.rows,
+		recent: recent.rows,
+		totalGames: totals.rows[0]?.totalGames ?? 0,
+		totalReports: totals.rows[0]?.totalReports ?? 0
 	};
 }
 
 export async function getGameById(appId: string) {
-	const db = getDb();
-	const [game] = await db
-		.select({
-			appId: games.appId,
-			title: games.title,
-			slug: games.slug,
-			artworkUrl: games.artworkUrl,
-			headerImageUrl: games.headerImageUrl,
-			tier: compatibilitySummaries.tier,
-			reportCount: compatibilitySummaries.reportCount,
-			scoredReportCount: compatibilitySummaries.scoredReportCount,
-			yesCount: compatibilitySummaries.yesCount,
-			noCount: compatibilitySummaries.noCount,
-			weightedScore: compatibilitySummaries.weightedScore,
-			effectiveSampleSize: compatibilitySummaries.effectiveSampleSize,
-			verdictDistribution: compatibilitySummaries.verdictDistribution,
-			lastReportAt: compatibilitySummaries.lastReportAt,
-			calculatedAt: compatibilitySummaries.calculatedAt
-		})
-		.from(games)
-		.innerJoin(compatibilitySummaries, eq(compatibilitySummaries.appId, games.appId))
-		.where(eq(games.appId, appId))
-		.limit(1);
+	const result = await getPool().query(
+		`SELECT g.app_id AS "appId", g.title, g.slug, g.artwork_url AS "artworkUrl",
+		        g.header_image_url AS "headerImageUrl", g.metadata,
+		        coalesce(r.report_count, 0)::int AS "reportCount",
+		        coalesce(r.yes_count, 0)::int AS "yesCount",
+		        coalesce(r.no_count, 0)::int AS "noCount",
+		        r.last_report_at AS "lastReportAt"
+		 FROM public.games AS g
+		 LEFT JOIN (${PUBLISHED_REPORTS}) AS r ON r.app_id = g.app_id
+		 WHERE g.app_id = $1
+		 LIMIT 1`,
+		[appId]
+	);
+	const game = result.rows[0];
 	return game
 		? {
 				...game,
 				title: game.title ?? `Steam app ${appId}`,
 				titleAvailable: Boolean(game.title?.trim()),
-				tier: game.tier ?? 'unknown',
-				reportCount: game.reportCount ?? 0
+				metadata: game.metadata ?? {}
 			}
 		: null;
 }
 
-function reportConditions(appId: string, filters: ReportFilters) {
-	const conditions = [eq(reports.appId, appId), visibleImportedReport];
-	if (filters.gpuVendor) conditions.push(eq(reports.gpuVendor, filters.gpuVendor));
-	if (filters.distribution) conditions.push(eq(reports.distribution, filters.distribution));
-	if (filters.verdict) conditions.push(eq(reports.sourceVerdict, filters.verdict));
+function nativeReportWhere(appId: string, filters: NativeReportFilters) {
+	const values: Array<string | Date> = [appId];
+	const conditions = ['app_id = $1', "moderation_state = 'published'"];
+	const add = (column: string, value: string | Date | undefined) => {
+		if (value === undefined) return;
+		values.push(value);
+		conditions.push(`${column} = $${values.length}`);
+	};
+	add('gpu_vendor', filters.gpuVendor);
+	add('distribution', filters.distribution);
+	add('verdict', filters.verdict);
 	if (filters.proton) {
 		const separator = filters.proton.indexOf(':');
 		const field = filters.proton.slice(0, separator);
 		const value = filters.proton.slice(separator + 1);
-		if (value && field === 'variant') conditions.push(eq(reports.protonVariant, value));
-		if (value && field === 'version') conditions.push(eq(reports.protonVersion, value));
+		if (value && field === 'variant') add('proton_variant', value);
+		if (value && field === 'version') add('proton_version', value);
 	}
-	if (filters.since) conditions.push(gte(reports.submittedAt, filters.since));
-	if (filters.until) conditions.push(lt(reports.submittedAt, filters.until));
-	return and(...conditions);
+	if (filters.since) {
+		values.push(filters.since);
+		conditions.push(`created_at >= $${values.length}`);
+	}
+	if (filters.until) {
+		values.push(filters.until);
+		conditions.push(`created_at < $${values.length}`);
+	}
+	return { values, where: conditions.join(' AND ') };
 }
 
-export async function getGameReportFilters(appId: string) {
-	const db = getDb();
-	const visibleForGame = and(eq(reports.appId, appId), visibleImportedReport);
+export async function getNativeReportFilters(appId: string) {
+	const pool = getPool();
 	const [gpuRows, distributionRows, protonRows] = await Promise.all([
-		db
-			.select({ value: reports.gpuVendor, total: count() })
-			.from(reports)
-			.where(visibleForGame)
-			.groupBy(reports.gpuVendor)
-			.orderBy(desc(count()))
-			.limit(10),
-		db
-			.select({ value: reports.distribution, total: count() })
-			.from(reports)
-			.where(and(visibleForGame, sql`${reports.distribution} is not null`))
-			.groupBy(reports.distribution)
-			.orderBy(desc(count()))
-			.limit(20),
-		db
-			.select({ variant: reports.protonVariant, version: reports.protonVersion, total: count() })
-			.from(reports)
-			.where(visibleForGame)
-			.groupBy(reports.protonVariant, reports.protonVersion)
-			.orderBy(desc(count()))
-			.limit(40)
+		pool.query<{ value: string; total: number }>(
+			`SELECT gpu_vendor AS value, count(*)::int AS total FROM public.native_reports
+			 WHERE app_id = $1 AND moderation_state = 'published' AND gpu_vendor IS NOT NULL
+			 GROUP BY gpu_vendor ORDER BY count(*) DESC LIMIT 10`,
+			[appId]
+		),
+		pool.query<{ value: string; total: number }>(
+			`SELECT distribution AS value, count(*)::int AS total FROM public.native_reports
+			 WHERE app_id = $1 AND moderation_state = 'published' AND distribution IS NOT NULL
+			 GROUP BY distribution ORDER BY count(*) DESC LIMIT 20`,
+			[appId]
+		),
+		pool.query<{ variant: string | null; version: string | null; total: number }>(
+			`SELECT proton_variant AS variant, proton_version AS version, count(*)::int AS total
+			 FROM public.native_reports WHERE app_id = $1 AND moderation_state = 'published'
+			 GROUP BY proton_variant, proton_version ORDER BY count(*) DESC LIMIT 40`,
+			[appId]
+		)
 	]);
 	return {
-		gpuVendors: gpuRows
-			.filter((row) => row.value && row.value !== 'Unknown')
-			.map((row) => row.value!),
-		distributions: distributionRows.map((row) => row.value!).filter(Boolean),
+		gpuVendors: gpuRows.rows
+			.map((row) => row.value)
+			.filter((value) => value && value !== 'Unknown'),
+		distributions: distributionRows.rows.map((row) => row.value).filter(Boolean),
 		proton: [
 			...new Map(
-				protonRows
+				protonRows.rows
 					.flatMap((row) => [
 						...(row.variant ? [{ value: `variant:${row.variant}`, label: row.variant }] : []),
 						...(row.version ? [{ value: `version:${row.version}`, label: row.version }] : [])
@@ -297,134 +225,36 @@ export async function getGameReportFilters(appId: string) {
 	};
 }
 
-export async function getGameReports(appId: string, filters: ReportFilters) {
-	const db = getDb();
+export async function getPublishedNativeReports(appId: string, filters: NativeReportFilters) {
+	const pool = getPool();
 	const pageSize = Math.min(40, Math.max(1, filters.pageSize ?? 20));
 	const page = Math.max(1, filters.page);
-	const where = reportConditions(appId, filters);
-	const [{ total }] = await db.select({ total: count() }).from(reports).where(where);
-	const rows = await db
-		.select({
-			id: reports.id,
-			source: reports.source,
-			submittedAt: reports.submittedAt,
-			sourceVerdict: reports.sourceVerdict,
-			sourceRating: reports.sourceRating,
-			protonVersion: reports.protonVersion,
-			protonVariant: reports.protonVariant,
-			customProtonVersion: reports.customProtonVersion,
-			distribution: reports.distribution,
-			kernel: reports.kernel,
-			cpu: reports.cpu,
-			gpu: reports.gpu,
-			gpuVendor: reports.gpuVendor,
-			graphicsDriver: reports.graphicsDriver,
-			ram: reports.ram,
-			steamRuntimeVersion: reports.steamRuntimeVersion,
-			xWindowManager: reports.xWindowManager,
-			launchOptions: reports.launchOptions,
-			comments: reports.comments,
-			steamDeckOs: sql<string | null>`${reports.sourceData}->'systemInfo'->>'os'`,
-			steamDeckBatteryPerformance: sql<
-				string | null
-			>`${reports.sourceData}->'responses'->>'batteryPerformance'`,
-			steamDeckReadability: sql<string | null>`${reports.sourceData}->'responses'->>'readability'`,
-			steamDeckDidChangeControlLayout: sql<
-				string | null
-			>`${reports.sourceData}->'responses'->>'didChangeControlLayout'`,
-			steamDeckControlLayout: sql<
-				string | null
-			>`${reports.sourceData}->'responses'->>'controlLayout'`,
-			steamDeckControlLayoutCustomization: sql<
-				string | null
-			>`${reports.sourceData}->'responses'->>'controlLayoutCustomization'`,
-			steamDeckFrameRate: sql<string | null>`${reports.sourceData}->'responses'->>'frameRate'`
-		})
-		.from(reports)
-		.where(where)
-		.orderBy(desc(reports.submittedAt), desc(reports.id))
-		.limit(pageSize)
-		.offset((page - 1) * pageSize);
-
-	const [launchOptions, hardware] = await Promise.all([
-		db
-			.select({ value: reports.launchOptions, total: count() })
-			.from(reports)
-			.where(
-				and(
-					eq(reports.appId, appId),
-					visibleImportedReport,
-					sql`${reports.launchOptions} is not null`
-				)
-			)
-			.groupBy(reports.launchOptions)
-			.orderBy(desc(count()))
-			.limit(5),
-		db
-			.select({
-				gpu: reports.gpu,
-				cpu: reports.cpu,
-				distribution: reports.distribution,
-				total: count()
-			})
-			.from(reports)
-			.where(and(eq(reports.appId, appId), visibleImportedReport))
-			.groupBy(reports.gpu, reports.cpu, reports.distribution)
-			.orderBy(desc(count()))
-			.limit(6)
+	const { values, where } = nativeReportWhere(appId, filters);
+	const [countResult, rows] = await Promise.all([
+		pool.query<{ total: number }>(
+			`SELECT count(*)::int AS total FROM public.native_reports WHERE ${where}`,
+			values
+		),
+		pool.query(
+			`SELECT report.id, author.username AS "authorUsername", report.verdict, report.platform,
+			        report.proton_version AS "protonVersion", report.proton_variant AS "protonVariant",
+			        report.custom_proton_version AS "customProtonVersion", report.distribution, report.kernel,
+			        report.cpu, report.gpu, report.gpu_vendor AS "gpuVendor",
+			        report.graphics_driver AS "graphicsDriver", report.gpu_driver_detail AS "gpuDriverDetail",
+			        report.ram, report.device_name_snapshot AS "deviceNameSnapshot",
+			        report.launch_options AS "launchOptions", report.performance_notes AS "performanceNotes",
+			        report.known_issues AS "knownIssues", report.content, report.published_at AS "publishedAt"
+			 FROM public.native_reports AS report
+			 JOIN public."user" AS author ON author.id = report.author_id
+			 WHERE ${where}
+			 ORDER BY coalesce(report.published_at, report.created_at) DESC, report.id DESC
+			 LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+			[...values, pageSize, (page - 1) * pageSize]
+		)
 	]);
+	const total = countResult.rows[0]?.total ?? 0;
 	return {
-		reports: rows,
-		total,
-		page,
-		pageSize,
-		pageCount: Math.max(1, Math.ceil(total / pageSize)),
-		launchOptions: launchOptions
-			.filter((row) => row.value)
-			.map((row) => ({ value: row.value!, count: row.total })),
-		hardware
-	};
-}
-
-export async function getPublishedNativeReports(appId: string, requestedPage = 1) {
-	const db = getDb();
-	const pageSize = 10;
-	const page = Math.max(1, Math.min(10_000, requestedPage));
-	const where = and(eq(nativeReports.appId, appId), eq(nativeReports.moderationState, 'published'));
-	const [totalRow] = await db.select({ total: count() }).from(nativeReports).where(where);
-	const rows = await db
-		.select({
-			id: nativeReports.id,
-			authorUsername: authUser.username,
-			verdict: nativeReports.verdict,
-			platform: nativeReports.platform,
-			protonVersion: nativeReports.protonVersion,
-			protonVariant: nativeReports.protonVariant,
-			customProtonVersion: nativeReports.customProtonVersion,
-			distribution: nativeReports.distribution,
-			kernel: nativeReports.kernel,
-			cpu: nativeReports.cpu,
-			gpu: nativeReports.gpu,
-			gpuVendor: nativeReports.gpuVendor,
-			graphicsDriver: nativeReports.graphicsDriver,
-			gpuDriverDetail: nativeReports.gpuDriverDetail,
-			ram: nativeReports.ram,
-			deviceNameSnapshot: nativeReports.deviceNameSnapshot,
-			launchOptions: nativeReports.launchOptions,
-			performanceNotes: nativeReports.performanceNotes,
-			knownIssues: nativeReports.knownIssues,
-			content: nativeReports.content,
-			publishedAt: nativeReports.publishedAt
-		})
-		.from(nativeReports)
-		.innerJoin(authUser, eq(authUser.id, nativeReports.authorId))
-		.where(where)
-		.orderBy(desc(nativeReports.publishedAt), desc(nativeReports.createdAt), desc(nativeReports.id))
-		.limit(pageSize)
-		.offset((page - 1) * pageSize);
-	const total = totalRow?.total ?? 0;
-	return {
-		reports: rows,
+		reports: rows.rows,
 		total,
 		page,
 		pageSize,
@@ -522,21 +352,15 @@ export async function getSettingsProfile(userId: string) {
 
 export async function getSitemapGames(offset: number, limit: number) {
 	const db = getDb();
-	const indexable = and(
-		gte(compatibilitySummaries.reportCount, MIN_INDEXABLE_REPORTS),
-		sql`length(btrim(coalesce(${games.title}, ''))) > 0`,
-		sql`length(btrim(${games.slug})) > 0`,
-		sql`${games.appId} ~ '^[0-9]+$'`
-	);
-	const [countRow] = await db
-		.select({ total: count() })
-		.from(games)
-		.innerJoin(compatibilitySummaries, eq(compatibilitySummaries.appId, games.appId))
-		.where(indexable);
+	const indexable = sql`
+		length(btrim(coalesce(${games.title}, ''))) > 0
+		AND length(btrim(${games.slug})) > 0
+		AND ${games.appId} ~ '^[0-9]+$'
+	`;
+	const [countRow] = await db.select({ total: count() }).from(games).where(indexable);
 	const rows = await db
 		.select({ appId: games.appId, slug: games.slug, updatedAt: games.updatedAt })
 		.from(games)
-		.innerJoin(compatibilitySummaries, eq(compatibilitySummaries.appId, games.appId))
 		.where(indexable)
 		.orderBy(asc(games.appId))
 		.limit(limit)

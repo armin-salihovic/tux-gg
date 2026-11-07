@@ -4,45 +4,26 @@
 	let { data }: { data: PageData } = $props();
 	const sections = [
 		{
-			title: 'Signals and values',
+			title: 'Player-reported outcomes',
 			paragraphs: [
-				'Modern ProtonDB yes/no verdicts map to 1.00 and 0.00. Legacy Platinum, Gold, Silver, Bronze, and Borked ratings map to 1.00, 0.80, 0.60, 0.35, and 0.00. Unknown or unsupported signals do not affect the tier. The source value remains visible on each report.'
+				'Each TuxGG report describes one player’s experience on a Linux desktop or Steam Deck. The author selects whether the game worked for that setup and can add Proton, distribution, hardware, performance, or issue details.',
+				'TuxGG shows published reports individually instead of combining them into a single compatibility score. Compare the hardware and software details before applying an outcome to your own system.'
 			]
 		},
 		{
-			title: 'Recency and minimum evidence',
+			title: 'Review and publication',
 			paragraphs: [
-				'Each recognized report receives a 365-day half-life weight: 2^(-age in days / 365). Future-dated reports are treated as age zero. The weighted score is the sum of weight × value divided by the sum of weights.',
-				'A tier is withheld as Unknown until both the sum of weights and effective sample size are at least 3. Effective sample size is (sum of weights)² / sum of squared weights. This reduces the influence of one old or isolated report.'
-			]
-		},
-		{
-			title: 'Tier thresholds',
-			paragraphs: [
-				'Once the evidence gate is met, TuxGG maps the weighted score to an easy-to-read tier. These thresholds are project methodology, not official ProtonDB categories.'
-			],
-			bullets: [
-				'Platinum: 0.95 or higher',
-				'Gold: 0.80 to less than 0.95',
-				'Silver: 0.60 to less than 0.80',
-				'Bronze: 0.30 to less than 0.60',
-				'Borked: below 0.30'
-			]
-		},
-		{
-			title: 'Limitations',
-			paragraphs: [
-				'Reports from the two questionnaire eras use different signals. Source verdicts and ratings are preserved separately, but the TuxGG score combines their documented numeric mappings. The method does not account for GPU model, launch options, anti-cheat responses, or free-text sentiment.',
-				'The tier should be read alongside the number, age, and distribution of reports. It is a community-data summary and does not promise compatibility or performance.'
+				'New reports are private and pending review. An operator can publish, hide, or remove a report. Only published reports appear publicly or contribute to the visible yes and no counts.',
+				'Reports can be incomplete or outdated and do not represent an official Steam or Valve verification.'
 			]
 		}
 	];
 </script>
 
 <ContentPage
-	eyebrow="Scoring"
-	title="TuxGG rating methodology"
-	intro="The compatibility tier is a transparent recency-weighted heuristic over recognized ProtonDB report signals."
+	eyebrow="Community reports"
+	title="How TuxGG reports work"
+	intro="TuxGG displays player experiences with their reported setup details and moderation status."
 	{sections}
 	canonical={data.canonical}
 />

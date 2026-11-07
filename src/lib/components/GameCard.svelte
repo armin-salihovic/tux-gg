@@ -1,16 +1,14 @@
 <script lang="ts">
-	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
-	import type { CompatibilityTier } from '#lib/scoring.js';
 
 	interface CardGame {
 		appId: string;
 		title: string | null;
 		slug: string;
-		tier: string;
 		reportCount: number;
+		yesCount: number;
+		noCount: number;
 		artworkUrl?: string | null;
-		weightedScore?: string | number | null;
 		lastReportAt?: Date | null;
 	}
 	let { game, compact = false }: { game: CardGame; compact?: boolean } = $props();
@@ -31,11 +29,6 @@
 			class="w-full"
 			imageClass="transition duration-500 group-hover:scale-[1.03]"
 		/>
-		{#if game.tier !== 'unknown'}
-			<span class="absolute top-3 right-3"
-				><CompatibilityBadge tier={game.tier as CompatibilityTier} /></span
-			>
-		{/if}
 	</div>
 	<div class="flex flex-1 flex-col p-4">
 		<div class="flex items-start justify-between gap-3">
@@ -48,12 +41,16 @@
 			>
 		</div>
 		<div class="mt-auto flex items-center justify-between gap-2 pt-5 text-xs text-muted">
-			<span
-				>{game.reportCount.toLocaleString()} {game.reportCount === 1 ? 'report' : 'reports'}</span
-			>
-			{#if game.tier === 'unknown'}<span class="rounded-full border border-white/10 px-2 py-1"
-					>Not enough data</span
-				>{/if}
+			{#if game.reportCount}
+				<span
+					>{game.reportCount.toLocaleString()} community {game.reportCount === 1
+						? 'report'
+						: 'reports'}</span
+				>
+				<span class="text-mint">{game.yesCount} yes · {game.noCount} no</span>
+			{:else}
+				<span>No community reports yet</span>
+			{/if}
 		</div>
 	</div>
 </a>

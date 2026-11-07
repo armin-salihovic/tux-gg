@@ -111,10 +111,6 @@ def main() -> int:
             "tuxgg_web",
             {
                 "has_table_privilege(current_user, 'public.games', 'SELECT')": True,
-                "has_table_privilege(current_user, 'public.reports', 'SELECT')": True,
-                "has_table_privilege(current_user, 'public.reports', 'INSERT')": False,
-                "has_table_privilege(current_user, 'public.reports', 'UPDATE')": False,
-                "has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE')": False,
                 "has_table_privilege(current_user, 'public.user', 'UPDATE')": True,
                 "has_table_privilege(current_user, 'public.native_reports', 'SELECT')": True,
                 "has_table_privilege(current_user, 'public.native_reports', 'INSERT')": False,
@@ -136,9 +132,7 @@ def main() -> int:
             "tuxgg_importer",
             {
                 "has_table_privilege(current_user, 'public.games', 'INSERT')": True,
-                "has_table_privilege(current_user, 'public.reports', 'INSERT')": True,
-                "has_table_privilege(current_user, 'public.reports', 'UPDATE')": True,
-                "has_table_privilege(current_user, 'public.compatibility_summaries', 'UPDATE')": True,
+                "has_table_privilege(current_user, 'public.games', 'SELECT')": True,
                 "has_table_privilege(current_user, 'public.user', 'SELECT')": False,
                 "has_table_privilege(current_user, 'public.user_devices', 'SELECT')": False,
             },
