@@ -24,12 +24,13 @@
 	});
 	const selectedDevice = $derived(data.devices.find((device) => device.id === selectedDeviceId));
 	const fieldError = (name: string) => form?.errors?.[name]?.[0];
-	const enhanceReport: SubmitFunction = ({ formData }) => {
-		const submittedDeviceId = formData.get('deviceId');
+	const enhanceReport: SubmitFunction = ({ formElement, formData }) => {
+		const submittedDeviceId = formElement.querySelector<HTMLSelectElement>('#deviceId')?.value;
+		if (submittedDeviceId) formData.set('deviceId', submittedDeviceId);
 		submitting = true;
 		return async ({ update }) => {
 			try {
-				await update({ reset: false });
+				await update({ reset: false, refreshAll: false });
 				if (typeof submittedDeviceId === 'string') selectedDeviceId = submittedDeviceId;
 			} finally {
 				submitting = false;
