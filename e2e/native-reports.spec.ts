@@ -258,6 +258,10 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await deviceSelect.selectOption(mainDevice.id);
 		await expect(deviceSelect).toHaveValue(mainDevice.id);
 		await page.getByLabel('Your experience').fill('short');
+		const validationResponsePromise = page.waitForResponse(
+			(response) =>
+				response.request().method() === 'POST' && new URL(response.url()).pathname === formPath
+		);
 		await page.locator('form').evaluate((form) => {
 			(form as HTMLFormElement).noValidate = true;
 		});
@@ -266,6 +270,26 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			'Check the highlighted fields and try again.'
 		);
 		await expect(page).toHaveURL(formPath);
+		const validationResponse = await validationResponsePromise;
+		const submittedForm = new URLSearchParams(validationResponse.request().postData() ?? '');
+		const validationState = await deviceSelect.evaluate((select) => ({
+			value: (select as HTMLSelectElement).value,
+			options: Array.from((select as HTMLSelectElement).options, (option) => ({
+				value: option.value,
+				label: option.textContent?.trim(),
+				selected: option.selected
+			}))
+		}));
+		console.log(
+			'[native-report validation state]',
+			JSON.stringify({
+				expectedDeviceId: mainDevice.id,
+				submittedDeviceId: submittedForm.get('deviceId'),
+				responseStatus: validationResponse.status(),
+				responseBody: await validationResponse.text(),
+				validationState
+			})
+		);
 		await expect(deviceSelect).toHaveValue(mainDevice.id);
 		await expect(page.getByLabel('Your experience')).toHaveValue('short');
 
