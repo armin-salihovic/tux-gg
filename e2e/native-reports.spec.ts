@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Pool } from 'pg';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const webDatabaseUrl = process.env.DATABASE_URL;
 const operatorDatabaseUrl = process.env.MIGRATION_DATABASE_URL;
@@ -14,6 +14,16 @@ test.skip(
 	webDatabaseName !== 'tuxgg_test' || operatorDatabaseName !== 'tuxgg_test',
 	'Native report browser journey requires the disposable tuxgg_test database.'
 );
+
+async function acceptDeleteConfirmation(page: Page, button: Locator) {
+	const dialogPromise = page.waitForEvent('dialog');
+	const clickPromise = button.click();
+	const dialog = await dialogPromise;
+	expect(dialog.type()).toBe('confirm');
+	expect(dialog.message()).toContain('Delete ');
+	await dialog.accept();
+	await clickPromise;
+}
 
 test('Steam user submits a pending report, views it privately, then sees it after operator approval', async ({
 	page,
@@ -394,8 +404,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		}
 
 		await page.goto('/settings/devices');
-		page.once('dialog', (dialog) => dialog.accept());
-		await mainCard.getByRole('button', { name: 'Delete' }).click();
+		await acceptDeleteConfirmation(page, mainCard.getByRole('button', { name: 'Delete' }));
 		await expect(page).toHaveURL('/settings/devices?saved=1');
 		const preserved = await web.query(
 			'SELECT device_id, device_name_snapshot, gpu FROM public.native_reports WHERE id = $1',
@@ -413,8 +422,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		).toBeVisible();
 		await page.goto('/settings/devices');
 		const legacyCard = page.locator('article').filter({ hasText: 'Old manual PC' });
-		page.once('dialog', (dialog) => dialog.accept());
-		await legacyCard.getByRole('button', { name: 'Delete' }).click();
+		await acceptDeleteConfirmation(page, legacyCard.getByRole('button', { name: 'Delete' }));
 		await expect(page).toHaveURL('/settings/devices?saved=1');
 		await page.goto(formPath);
 		await expect(

@@ -25,11 +25,13 @@
 	});
 	const selectedDevice = $derived(data.devices.find((device) => device.id === selectedDeviceId));
 	const fieldError = (name: string) => form?.errors?.[name]?.[0];
-	const enhanceReport: SubmitFunction = () => {
+	const enhanceReport: SubmitFunction = ({ formData }) => {
+		const submittedDeviceId = formData.get('deviceId');
 		submitting = true;
 		return async ({ update }) => {
 			try {
 				await update({ reset: false });
+				if (typeof submittedDeviceId === 'string') selectedDeviceId = submittedDeviceId;
 			} finally {
 				submitting = false;
 			}
