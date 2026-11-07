@@ -257,6 +257,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await expect(deviceSelect).toHaveValue(deckDeviceId);
 		await deviceSelect.selectOption(mainDevice.id);
 		await expect(deviceSelect).toHaveValue(mainDevice.id);
+		await expect(page.getByText('Main Gaming PC · Linux desktop', { exact: true })).toBeVisible();
 		await page.getByLabel('Your experience').fill('short');
 		const validationResponsePromise = page.waitForResponse(
 			(response) =>
@@ -265,6 +266,15 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		await page.locator('form').evaluate((form) => {
 			(form as HTMLFormElement).noValidate = true;
 		});
+		const preSubmitState = await page.locator('form').evaluate((form) => {
+			const device = form.querySelector<HTMLSelectElement>('#deviceId');
+			const experience = form.querySelector<HTMLTextAreaElement>('#content');
+			return {
+				deviceId: device?.value,
+				content: experience?.value
+			};
+		});
+		console.log('[native-report before submit]', JSON.stringify(preSubmitState));
 		await page.getByRole('button', { name: 'Submit report' }).click();
 		await expect(page.getByRole('alert')).toContainText(
 			'Check the highlighted fields and try again.'
