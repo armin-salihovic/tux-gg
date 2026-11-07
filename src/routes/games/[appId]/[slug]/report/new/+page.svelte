@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance, type SubmitFunction } from '$app/forms';
+	import { untrack } from 'svelte';
 	import type { PageData } from './$types';
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	import { nativeReportLimits } from '#lib/native-report-validation.js';
@@ -11,17 +12,15 @@
 	};
 	let { data, form }: { data: PageData; form?: ReportFormState } = $props();
 	let submitting = $state(false);
-	let selectedDeviceId = $state('');
-	$effect(() => {
-		if (data.devices.some((device) => device.id === selectedDeviceId)) return;
-		const submittedDeviceId = form?.values?.deviceId;
-		if (submittedDeviceId && data.devices.some((device) => device.id === submittedDeviceId)) {
-			selectedDeviceId = submittedDeviceId;
-			return;
-		}
-		selectedDeviceId =
-			data.devices.find((device) => device.isDefault)?.id ?? data.devices[0]?.id ?? '';
-	});
+	let selectedDeviceId = $state(
+		untrack(
+			() =>
+				data.devices.find((device) => device.id === form?.values?.deviceId)?.id ??
+				data.devices.find((device) => device.isDefault)?.id ??
+				data.devices[0]?.id ??
+				''
+		)
+	);
 	const selectedDevice = $derived(data.devices.find((device) => device.id === selectedDeviceId));
 	const fieldError = (name: string) => form?.errors?.[name]?.[0];
 	const enhanceReport: SubmitFunction = ({ formElement, formData }) => {
@@ -30,12 +29,14 @@
 		submitting = true;
 		return async ({ result, update }) => {
 			try {
-				if (result.type === 'failure' && typeof submittedDeviceId === 'string') {
-					const returnedForm = result.data as ReportFormState;
-					if (returnedForm.values) returnedForm.values.deviceId = submittedDeviceId;
+				if (
+					result.type === 'failure' &&
+					typeof submittedDeviceId === 'string' &&
+					data.devices.some((device) => device.id === submittedDeviceId)
+				) {
+					selectedDeviceId = submittedDeviceId;
 				}
 				await update({ reset: false, refreshAll: false });
-				if (typeof submittedDeviceId === 'string') selectedDeviceId = submittedDeviceId;
 			} finally {
 				submitting = false;
 			}

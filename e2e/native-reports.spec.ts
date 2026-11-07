@@ -267,6 +267,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		);
 		await expect(page).toHaveURL(formPath);
 		await expect(deviceSelect).toHaveValue(mainDevice.id);
+		await expect(page.getByLabel('Your experience')).toHaveValue('short');
 
 		const unsafeLookingText = `Browser journey ${suffix}: <img src=x onerror=alert(1)>`;
 		await page.getByLabel('Your experience').fill(unsafeLookingText);
