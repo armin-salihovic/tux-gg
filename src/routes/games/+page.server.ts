@@ -6,7 +6,7 @@ import { absoluteUrl } from '#lib/server/seo.js';
 import { logDatabaseFailure } from '#lib/server/database-errors.js';
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
 
-const sortSchema = z.enum(['title', 'reports', 'recent']);
+const sortSchema = z.enum(['title', 'reports', 'recent', 'tier']);
 const pageSchema = z.coerce.number().int().min(1).max(100_000).catch(1);
 
 export const load: PageServerLoad = async ({ url, setHeaders }) => {

@@ -14,6 +14,7 @@ EXPECTED_DATABASE = "tuxgg"
 TEST_DATABASE = "tuxgg_test"
 ROLE_URLS = {
     "DATABASE_URL": "tuxgg_web",
+    "IMPORTER_DATABASE_URL": "tuxgg_importer",
     "MIGRATION_DATABASE_URL": "tuxgg_migrator",
 }
 

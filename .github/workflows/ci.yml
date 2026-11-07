@@ -57,6 +57,7 @@ jobs:
       - run: python scripts/export_ci_test_database_urls.py
       - run: pnpm db:migrate
       - run: pnpm db:test:prepare
+      - run: pnpm test:db-backup
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm check

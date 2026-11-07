@@ -1,9 +1,14 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { parseSteamSystemInfo } from '#lib/steam-system-info.js';
 import { canSubmitReports } from '#lib/server/authz.js';
-import { getMyNativeReports, getPublishedNativeReports } from '#lib/server/db/queries.js';
+import {
+	getGameById,
+	getMyNativeReports,
+	getPublishedNativeReports
+} from '#lib/server/db/queries.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authUser, games, nativeReports } from '#lib/server/db/schema.js';
 import { insertNativeReportForDevice, SelectedDeviceNotFoundError } from './native-reports.js';
@@ -11,6 +16,8 @@ import { createUserDevice, deleteUserDevice, updateUserDevice } from './user-dev
 
 const enabled = process.env.NATIVE_REPORT_INTEGRATION_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL;
+const migrationUrl = process.env.MIGRATION_DATABASE_URL;
+const operator = migrationUrl ? new Pool({ connectionString: migrationUrl }) : undefined;
 
 describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 	it('requires a verified owner device and keeps its report hardware snapshot immutable', async () => {
@@ -213,7 +220,66 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 		).rejects.toMatchObject({ code: '42501' });
 	});
 
+	it('recalculates public tiers as reports move through moderation states', async () => {
+		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'tuxgg_test') {
+			throw new Error('Scoring integration tests require DATABASE_URL to target tuxgg_test.');
+		}
+		if (!operator) throw new Error('Scoring integration tests require MIGRATION_DATABASE_URL.');
+		const identity = await operator.query('SELECT current_database(), current_user');
+		expect(identity.rows[0]?.current_database).toBe('tuxgg_test');
+		expect(identity.rows[0]?.current_user).toBe('tuxgg_migrator');
+		const appId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+		const userId = `score-${randomUUID()}`;
+		const reportIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+		try {
+			await operator.query('INSERT INTO public.games (app_id, title, slug) VALUES ($1, $2, $3)', [
+				appId,
+				`Scoring fixture ${appId}`,
+				`scoring-fixture-${appId}`
+			]);
+			await operator.query(
+				'INSERT INTO public.user (id, name, email, username) VALUES ($1, $2, $3, $4)',
+				[userId, 'Scoring fixture', `${userId}@score.invalid`, `score-${appId}`]
+			);
+			for (const [index, id] of reportIds.entries()) {
+				await operator.query(
+					`INSERT INTO public.native_reports
+					 (id, app_id, author_id, verdict, content, moderation_state, created_at, published_at)
+					 VALUES ($1, $2, $3, $4, 'Scoring fixture report', $5, now(), $6)`,
+					[
+						id,
+						appId,
+						userId,
+						index === 3 ? 'no' : 'yes',
+						index === 3 ? 'pending' : 'published',
+						index === 3 ? null : new Date()
+					]
+				);
+			}
+			expect(await getGameById(appId)).toMatchObject({ reportCount: 3, tier: 'platinum' });
+			await operator.query(
+				"UPDATE public.native_reports SET moderation_state = 'hidden', published_at = NULL WHERE id = $1",
+				[reportIds[0]]
+			);
+			expect(await getGameById(appId)).toMatchObject({ reportCount: 2, tier: 'unknown' });
+			await operator.query(
+				"UPDATE public.native_reports SET moderation_state = 'published', published_at = now() WHERE id = $1",
+				[reportIds[3]]
+			);
+			expect(await getGameById(appId)).toMatchObject({ reportCount: 3, tier: 'silver' });
+			await operator.query(
+				"UPDATE public.native_reports SET moderation_state = 'removed', published_at = NULL WHERE id = $1",
+				[reportIds[1]]
+			);
+			expect(await getGameById(appId)).toMatchObject({ reportCount: 2, tier: 'unknown' });
+		} finally {
+			await operator.query('DELETE FROM public.games WHERE app_id = $1', [appId]);
+			await operator.query('DELETE FROM public.user WHERE id = $1', [userId]);
+		}
+	});
+
 	afterAll(async () => {
+		await operator?.end();
 		await closeDatabase();
 	});
 });

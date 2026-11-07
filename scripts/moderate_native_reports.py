@@ -30,7 +30,7 @@ def verify_operator_connection(conn) -> None:
         database, role, is_superuser, can_select, can_update = row
         if database not in ("tuxgg", TEST_DATABASE):
             raise RuntimeError("Moderation is allowed only on tuxgg or the marked tuxgg_test database.")
-        if role in ("tuxgg_web", "tuxgg_importer", "tuxgg_app") or is_superuser:
+        if role in ("tuxgg_web", "tuxgg_importer") or is_superuser:
             raise RuntimeError("Use a non-administrator operator or migration role for moderation.")
         if not can_select or not can_update:
             raise RuntimeError("The configured operator role cannot moderate native reports.")

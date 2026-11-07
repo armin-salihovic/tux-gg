@@ -1,8 +1,9 @@
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import { getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authUser, games, nativeReports } from '#lib/server/db/schema.js';
+import { MIN_TOTAL_WEIGHT, tierForEvidence } from '#lib/scoring.js';
 
-export type CatalogSort = 'title' | 'reports' | 'recent';
+export type CatalogSort = 'title' | 'reports' | 'recent' | 'tier';
 
 export interface GameQuery {
 	q: string;
@@ -27,10 +28,38 @@ const PUBLISHED_REPORTS = `
 	       count(*)::int AS report_count,
 	       count(*) FILTER (WHERE verdict = 'yes')::int AS yes_count,
 	       count(*) FILTER (WHERE verdict = 'no')::int AS no_count,
-	       max(coalesce(published_at, created_at)) AS last_report_at
-	FROM public.native_reports
-	WHERE moderation_state = 'published'
+	       sum(weight) AS total_weight,
+	       sum(weight * weight) AS squared_weight,
+	       sum(weight) FILTER (WHERE verdict = 'yes') / nullif(sum(weight), 0) AS weighted_score,
+	       max(report_at) AS last_report_at
+	FROM (
+		SELECT app_id, verdict, coalesce(published_at, created_at) AS report_at,
+		       power(0.5::float8,
+		         greatest(0::float8, extract(epoch FROM (now() - coalesce(published_at, created_at))) / 86400.0)
+		         / 365.0) AS weight
+		FROM public.native_reports
+		WHERE moderation_state = 'published'
+	) AS published_reports
 	GROUP BY app_id`;
+
+function withCompatibility<
+	T extends {
+		weighted_score?: number | string | null;
+		total_weight?: number | string | null;
+		squared_weight?: number | string | null;
+	}
+>(row: T) {
+	const weightedScore = row.weighted_score == null ? null : Number(row.weighted_score);
+	const totalWeight = Number(row.total_weight ?? 0);
+	const squaredWeight = Number(row.squared_weight ?? 0);
+	const effectiveSampleSize = squaredWeight > 0 ? (totalWeight * totalWeight) / squaredWeight : 0;
+	return {
+		...row,
+		weightedScore,
+		effectiveSampleSize,
+		tier: tierForEvidence(weightedScore, totalWeight, effectiveSampleSize)
+	};
+}
 
 function catalogConditions(term: string) {
 	if (!term) return '';
@@ -67,9 +96,15 @@ export async function getCatalog(query: GameQuery) {
 			? 'report_count DESC, last_report_at DESC NULLS LAST, g.title ASC NULLS LAST, g.app_id ASC'
 			: query.sort === 'recent'
 				? 'last_report_at DESC NULLS LAST, g.updated_at DESC, g.title ASC NULLS LAST, g.app_id ASC'
-				: term
-					? 'rank DESC, report_count DESC, g.title ASC NULLS LAST, g.app_id ASC'
-					: 'g.title ASC NULLS LAST, g.app_id ASC';
+				: query.sort === 'tier'
+					? `CASE WHEN r.weighted_score IS NULL OR r.total_weight < ${MIN_TOTAL_WEIGHT} OR
+							(r.total_weight * r.total_weight / nullif(r.squared_weight, 0)) < 3 THEN 6
+							WHEN r.weighted_score >= 0.95 THEN 1 WHEN r.weighted_score >= 0.8 THEN 2
+							WHEN r.weighted_score >= 0.6 THEN 3 WHEN r.weighted_score >= 0.3 THEN 4 ELSE 5 END,
+							r.weighted_score DESC NULLS LAST, report_count DESC, g.title ASC NULLS LAST`
+					: term
+						? 'rank DESC, report_count DESC, g.title ASC NULLS LAST, g.app_id ASC'
+						: 'g.title ASC NULLS LAST, g.app_id ASC';
 	const pagination = term ? 'LIMIT $2 OFFSET $3' : 'LIMIT $1 OFFSET $2';
 	const rows = await getPool().query(
 		`WITH report_stats AS (${PUBLISHED_REPORTS})
@@ -77,6 +112,7 @@ export async function getCatalog(query: GameQuery) {
 		        coalesce(r.report_count, 0)::int AS "reportCount",
 		        coalesce(r.yes_count, 0)::int AS "yesCount",
 		        coalesce(r.no_count, 0)::int AS "noCount",
+		        r.total_weight, r.squared_weight, r.weighted_score,
 		        r.last_report_at AS "lastReportAt", ${rank} AS rank
 		 FROM public.games AS g
 		 LEFT JOIN report_stats AS r ON r.app_id = g.app_id
@@ -86,7 +122,7 @@ export async function getCatalog(query: GameQuery) {
 		term ? [term, pageSize, (page - 1) * pageSize] : [pageSize, (page - 1) * pageSize]
 	);
 	return {
-		games: rows.rows.map((row) => ({ ...row, rank: Number(row.rank) })),
+		games: rows.rows.map((row) => ({ ...withCompatibility(row), rank: Number(row.rank) })),
 		total,
 		page,
 		pageSize,
@@ -107,6 +143,7 @@ export async function getHomeData() {
 			        coalesce(r.report_count, 0)::int AS "reportCount",
 			        coalesce(r.yes_count, 0)::int AS "yesCount",
 			        coalesce(r.no_count, 0)::int AS "noCount",
+			        r.total_weight, r.squared_weight, r.weighted_score,
 			        r.last_report_at AS "lastReportAt"
 			 FROM public.games AS g LEFT JOIN report_stats AS r ON r.app_id = g.app_id
 			 ORDER BY coalesce(r.report_count, 0) DESC, r.last_report_at DESC NULLS LAST,
@@ -118,14 +155,15 @@ export async function getHomeData() {
 			        coalesce(r.report_count, 0)::int AS "reportCount",
 			        coalesce(r.yes_count, 0)::int AS "yesCount",
 			        coalesce(r.no_count, 0)::int AS "noCount",
+			        r.total_weight, r.squared_weight, r.weighted_score,
 			        r.last_report_at AS "lastReportAt"
 			 FROM public.games AS g LEFT JOIN report_stats AS r ON r.app_id = g.app_id
 			 ORDER BY coalesce(r.last_report_at, g.updated_at) DESC, g.app_id ASC LIMIT 6`
 		)
 	]);
 	return {
-		popular: popular.rows,
-		recent: recent.rows,
+		popular: popular.rows.map(withCompatibility),
+		recent: recent.rows.map(withCompatibility),
 		totalGames: totals.rows[0]?.totalGames ?? 0,
 		totalReports: totals.rows[0]?.totalReports ?? 0
 	};
@@ -138,6 +176,7 @@ export async function getGameById(appId: string) {
 		        coalesce(r.report_count, 0)::int AS "reportCount",
 		        coalesce(r.yes_count, 0)::int AS "yesCount",
 		        coalesce(r.no_count, 0)::int AS "noCount",
+		        r.total_weight, r.squared_weight, r.weighted_score,
 		        r.last_report_at AS "lastReportAt"
 		 FROM public.games AS g
 		 LEFT JOIN (${PUBLISHED_REPORTS}) AS r ON r.app_id = g.app_id
@@ -148,7 +187,7 @@ export async function getGameById(appId: string) {
 	const game = result.rows[0];
 	return game
 		? {
-				...game,
+				...withCompatibility(game),
 				title: game.title ?? `Steam app ${appId}`,
 				titleAvailable: Boolean(game.title?.trim()),
 				metadata: game.metadata ?? {}
@@ -356,6 +395,7 @@ export async function getSitemapGames(offset: number, limit: number) {
 		length(btrim(coalesce(${games.title}, ''))) > 0
 		AND length(btrim(${games.slug})) > 0
 		AND ${games.appId} ~ '^[0-9]+$'
+		AND length(btrim(coalesce(${games.metadata} #>> '{steam,shortDescription}', ''))) >= 50
 	`;
 	const [countRow] = await db.select({ total: count() }).from(games).where(indexable);
 	const rows = await db

@@ -605,7 +605,8 @@ async function run() {
 	const dateStamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
 	const archivePath = path.join(backupDir, `tuxgg-games-${dateStamp}.dump`);
 	const csvPath = path.join(backupDir, `tuxgg-games-${dateStamp}.csv`);
-	for (const target of [archivePath, csvPath]) {
+	const manifestPath = path.join(backupDir, `tuxgg-games-${dateStamp}.manifest.json`);
+	for (const target of [archivePath, csvPath, manifestPath]) {
 		try {
 			await stat(target);
 			throw new Error(
@@ -733,6 +734,25 @@ async function run() {
 			sha256(csvPath),
 			sha256(archivePath)
 		]);
+		const manifest = {
+			format: 'tuxgg-games-backup-v1',
+			verifiedAt: new Date().toISOString(),
+			database: 'tuxgg',
+			originalCount,
+			csvCount,
+			archiveRestoredRows: restoreResult.rows,
+			representativeRecordsCompared: restoreResult.representativeRecords,
+			csvFile: path.basename(csvPath),
+			csvSha256: csvHash,
+			archiveFile: path.basename(archivePath),
+			archiveSha256: archiveHash
+		};
+		await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
+			encoding: 'utf8',
+			mode: 0o600,
+			flag: 'wx'
+		});
+		publishedFiles.push(manifestPath);
 		resultSummary = {
 			originalCount,
 			csvCount,
@@ -742,7 +762,8 @@ async function run() {
 			csvHash,
 			archiveHash,
 			csvPath,
-			archivePath
+			archivePath,
+			manifestPath
 		};
 	} catch (error) {
 		for (const filePath of publishedFiles) await rm(filePath, { force: true }).catch(() => {});
@@ -773,6 +794,7 @@ async function run() {
 	console.log(`CSV SHA-256: ${resultSummary.csvHash}`);
 	console.log(`Archive: ${resultSummary.archivePath} (${resultSummary.archiveInfo.size} bytes)`);
 	console.log(`Archive SHA-256: ${resultSummary.archiveHash}`);
+	console.log(`Verification manifest: ${resultSummary.manifestPath}`);
 }
 
 run().catch((error) => {

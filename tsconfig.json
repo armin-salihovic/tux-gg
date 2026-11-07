@@ -1,7 +1,7 @@
 {
 	"extends": "$app/tsconfig",
 	"include": ["src", "tests", "*.ts"],
-	"exclude": ["node_modules", "build", "dist", "protondb-data"],
+	"exclude": ["node_modules", "build", "dist"],
 	"compilerOptions": {
 		"allowJs": true,
 		"checkJs": true,

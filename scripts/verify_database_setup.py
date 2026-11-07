@@ -102,7 +102,7 @@ def main() -> int:
                     "The auth table owner must retain SELECT and UPDATE for foreign-key checks."
                 )
             cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'tuxgg'")
-            if cur.fetchone()[0] in ("tuxgg_web", "tuxgg_importer", "tuxgg_app"):
+            if cur.fetchone()[0] in ("tuxgg_web", "tuxgg_importer"):
                 raise RuntimeError("A runtime role owns the TuxGG database.")
 
         env = read_env_file()

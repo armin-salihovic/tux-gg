@@ -13,28 +13,23 @@
 	let submitting = $state(false);
 	let selectedDeviceId = $state('');
 	$effect(() => {
-		const preferred =
-			form?.values?.deviceId ??
-			data.devices.find((device) => device.isDefault)?.id ??
-			data.devices[0]?.id ??
-			'';
-		if (!data.devices.some((device) => device.id === selectedDeviceId))
-			selectedDeviceId = preferred;
+		const submittedDeviceId = form?.values?.deviceId;
+		if (submittedDeviceId && data.devices.some((device) => device.id === submittedDeviceId)) {
+			selectedDeviceId = submittedDeviceId;
+			return;
+		}
+		if (!data.devices.some((device) => device.id === selectedDeviceId)) {
+			selectedDeviceId =
+				data.devices.find((device) => device.isDefault)?.id ?? data.devices[0]?.id ?? '';
+		}
 	});
 	const selectedDevice = $derived(data.devices.find((device) => device.id === selectedDeviceId));
 	const fieldError = (name: string) => form?.errors?.[name]?.[0];
-	const enhanceReport: SubmitFunction = ({ formData }) => {
-		const submittedDeviceId = formData.get('deviceId');
+	const enhanceReport: SubmitFunction = () => {
 		submitting = true;
 		return async ({ update }) => {
 			try {
 				await update({ reset: false });
-				if (
-					typeof submittedDeviceId === 'string' &&
-					data.devices.some((device) => device.id === submittedDeviceId)
-				) {
-					selectedDeviceId = submittedDeviceId;
-				}
 			} finally {
 				submitting = false;
 			}

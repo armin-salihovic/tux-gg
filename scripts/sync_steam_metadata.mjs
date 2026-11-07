@@ -2,14 +2,21 @@
 
 import pg from 'pg';
 import { loadLocalEnv, MERGE_METADATA_FUNCTION, slugify } from './games-catalog.mjs';
+import {
+	fetchSteamDetails,
+	planSteamMetadataSync,
+	STEAM_METADATA_TTL_MS,
+	waitForSteamRequestSlot
+} from '../src/lib/server/steam-metadata.js';
 
 loadLocalEnv();
 
 function parseArgs(args) {
-	const result = { ids: [], limit: 10, dryRun: false };
+	const result = { ids: [], limit: 10, dryRun: false, force: false };
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === '--dry-run') result.dryRun = true;
+		else if (arg === '--force') result.force = true;
 		else if (arg === '--ids') {
 			const value = args[++index];
 			if (!value) throw new Error('--ids requires a comma-separated list of Steam AppIDs.');
@@ -31,10 +38,6 @@ function parseArgs(args) {
 	if (result.ids.length && result.ids.length > result.limit)
 		throw new Error('--ids cannot contain more games than --limit.');
 	return result;
-}
-
-function wait(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function nonEmpty(value) {
@@ -79,71 +82,77 @@ function normalizeSteamDetails(data) {
 	);
 }
 
-async function fetchDetails(appId) {
-	const url = new URL('https://store.steampowered.com/api/appdetails');
-	url.searchParams.set('appids', appId);
-	url.searchParams.set('l', 'english');
-	url.searchParams.set('cc', 'us');
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 20_000);
+async function main() {
+	let client;
 	try {
-		const response = await fetch(url, {
-			signal: controller.signal,
-			headers: { 'user-agent': 'TuxGG Steam catalog sync (development)' }
-		});
-		if (!response.ok) throw new Error(`Steam returned HTTP ${response.status}.`);
-		const payload = await response.json();
-		const item = payload?.[appId];
-		if (!item?.success || !item?.data || typeof item.data !== 'object')
-			return { appId, status: 'unavailable', data: null };
-		return { appId, status: 'ok', data: item.data };
-	} finally {
-		clearTimeout(timeout);
-	}
-}
-
-let client;
-try {
-	const options = parseArgs(process.argv.slice(2));
-	const connectionString = options.dryRun
-		? process.env.DATABASE_URL
-		: process.env.IMPORTER_DATABASE_URL;
-	if (!connectionString)
-		throw new Error(
-			`${options.dryRun ? 'DATABASE_URL' : 'IMPORTER_DATABASE_URL'} is not configured.`
-		);
-	client = new pg.Client({ connectionString, application_name: 'tuxgg-steam-metadata-sync' });
-	await client.connect();
-	const identity = await client.query('SELECT current_database() AS database');
-	if (!['tuxgg', 'tuxgg_test'].includes(identity.rows[0]?.database))
-		throw new Error('Refusing to sync against an unrecognized database.');
-	let ids = options.ids;
-	if (!ids.length) {
-		const selected = await client.query(
-			`SELECT app_id FROM public.games
+		const options = parseArgs(process.argv.slice(2));
+		const connectionString = options.dryRun
+			? process.env.DATABASE_URL
+			: process.env.IMPORTER_DATABASE_URL;
+		if (!connectionString)
+			throw new Error(
+				`${options.dryRun ? 'DATABASE_URL' : 'IMPORTER_DATABASE_URL'} is not configured.`
+			);
+		client = new pg.Client({ connectionString, application_name: 'tuxgg-steam-metadata-sync' });
+		await client.connect();
+		const identity = await client.query('SELECT current_database() AS database');
+		if (!['tuxgg', 'tuxgg_test'].includes(identity.rows[0]?.database))
+			throw new Error('Refusing to sync against an unrecognized database.');
+		let games;
+		const now = Date.now();
+		const cutoff = new Date(now - STEAM_METADATA_TTL_MS).toISOString();
+		if (options.ids.length) {
+			const selected = await client.query(
+				'SELECT app_id, title, metadata FROM public.games WHERE app_id = ANY($1::text[])',
+				[options.ids]
+			);
+			const byId = new Map(selected.rows.map((row) => [row.app_id, row]));
+			games = options.ids.map((appId) => byId.get(appId)).filter(Boolean);
+		} else {
+			const freshAt = "metadata #>> '{steam,lastFetchedAt}'";
+			const staleFilter = options.force
+				? ''
+				: `WHERE ${freshAt} IS NULL
+				OR ${freshAt} !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}.*Z$'
+				OR ${freshAt} < $2`;
+			const selected = await client.query(
+				`SELECT app_id, title, metadata FROM public.games ${staleFilter}
 			 ORDER BY CASE WHEN title IS NULL OR artwork_url IS NULL OR metadata = '{}'::jsonb THEN 0 ELSE 1 END,
-			          updated_at DESC, app_id ASC
-			 LIMIT $1`,
-			[options.limit]
-		);
-		ids = selected.rows.map((row) => row.app_id);
-	}
-	if (ids.length === 0)
-		throw new Error('No games are present in public.games. Restore the games CSV first.');
+			          updated_at ASC, app_id ASC LIMIT $1`,
+				options.force ? [options.limit] : [options.limit, cutoff]
+			);
+			games = selected.rows;
+		}
+		if (games.length === 0) {
+			console.log(
+				options.ids.length
+					? 'None of the requested AppIDs are present in public.games.'
+					: 'No stale games need a metadata refresh.'
+			);
+			return;
+		}
+		const planned = planSteamMetadataSync(games, { force: options.force, now });
 
-	const delayMs = Math.max(2000, Number(process.env.STEAM_REQUEST_DELAY_MS) || 2000);
-	console.log(
-		`Refreshing ${ids.length} existing Steam app(s) with a ${delayMs} ms minimum delay${options.dryRun ? ' (dry run)' : ''}.`
-	);
-	if (!options.dryRun) await client.query(MERGE_METADATA_FUNCTION);
-	const results = [];
-	for (const [index, appId] of ids.entries()) {
-		if (index > 0) await wait(delayMs);
-		const result = await fetchDetails(appId);
-		if (result.status === 'ok') {
-			const name = nonEmpty(result.data.name);
-			const steamMetadata = normalizeSteamDetails(result.data);
-			if (!options.dryRun) {
+		console.log(
+			`${options.dryRun ? 'Previewing' : 'Refreshing'} ${planned.fetch.length} of ${games.length} existing Steam app(s); ${planned.cached.length} fresh entries skipped${options.force ? ' (forced refresh)' : ''}.`
+		);
+		if (options.dryRun) {
+			for (const game of planned.fetch) console.log(`${game.app_id}: would fetch`);
+			for (const game of planned.cached) console.log(`${game.app_id}: skipped (fresh cache)`);
+			console.log(
+				'Dry run complete; no Steam requests were made and the database was not modified.'
+			);
+			return;
+		}
+		await client.query(MERGE_METADATA_FUNCTION);
+		const results = [];
+		let lastRequestAt = null;
+		for (const game of planned.fetch) {
+			lastRequestAt = await waitForSteamRequestSlot(lastRequestAt);
+			const result = await fetchSteamDetails(game.app_id);
+			if (result.status === 'ok') {
+				const name = nonEmpty(result.data.name);
+				const steamMetadata = normalizeSteamDetails(result.data);
 				await client.query(
 					`INSERT INTO public.games (app_id, title, slug, artwork_url, header_image_url, metadata)
 					 VALUES ($1, $2, $3, $4, $5, $6::jsonb)
@@ -155,35 +164,42 @@ try {
 					   metadata = pg_temp.tuxgg_merge_metadata(public.games.metadata, EXCLUDED.metadata),
 					   updated_at = now()`,
 					[
-						appId,
+						game.app_id,
 						name,
-						slugify(name, appId),
+						slugify(name, game.app_id),
 						nonEmpty(result.data.capsule_image),
 						nonEmpty(result.data.header_image),
 						JSON.stringify({ steam: steamMetadata })
 					]
 				);
-			}
-			results.push({
-				appId,
-				title: name,
-				status: options.dryRun ? 'available; not written' : 'updated'
-			});
-		} else results.push({ appId, title: null, status: 'Steam details unavailable' });
+				results.push({
+					appId: game.app_id,
+					title: name,
+					status: 'updated'
+				});
+			} else
+				results.push({
+					appId: game.app_id,
+					title: null,
+					status: `Steam details unavailable${result.code ? ` (HTTP ${result.code})` : ''}`
+				});
+			console.log(
+				`${game.app_id}: ${result.status === 'ok' ? (nonEmpty(result.data.name) ?? 'name unavailable') : `unavailable${result.code ? ` (HTTP ${result.code})` : ''}`}`
+			);
+		}
 		console.log(
-			`${appId}: ${result.status === 'ok' ? (nonEmpty(result.data.name) ?? 'name unavailable') : result.status}`
+			`Finished: ${results.filter((result) => result.status === 'updated').length} updated, ${results.filter((result) => result.status.startsWith('Steam details unavailable')).length} unavailable.`
 		);
+	} catch (error) {
+		const detail =
+			error instanceof Error
+				? `${error.name}${error.message ? `: ${error.message}` : ''}`
+				: String(error);
+		console.error(`Steam metadata sync failed: ${detail}`);
+		process.exitCode = 1;
+	} finally {
+		if (client) await client.end().catch(() => {});
 	}
-	console.log(
-		`Finished: ${results.filter((result) => result.status === 'updated' || result.status === 'available; not written').length} available, ${results.filter((result) => result.status === 'Steam details unavailable').length} unavailable.`
-	);
-} catch (error) {
-	const detail =
-		error instanceof Error
-			? `${error.name}${error.message ? `: ${error.message}` : ''}`
-			: String(error);
-	console.error(`Steam metadata sync failed: ${detail}`);
-	process.exitCode = 1;
-} finally {
-	if (client) await client.end().catch(() => {});
 }
+
+await main();

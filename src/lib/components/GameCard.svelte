@@ -1,5 +1,6 @@
 <script lang="ts">
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
+	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
 
 	interface CardGame {
 		appId: string;
@@ -8,6 +9,7 @@
 		reportCount: number;
 		yesCount: number;
 		noCount: number;
+		tier: string;
 		artworkUrl?: string | null;
 		lastReportAt?: Date | null;
 	}
@@ -31,6 +33,7 @@
 		/>
 	</div>
 	<div class="flex flex-1 flex-col p-4">
+		<div class="mb-3"><CompatibilityBadge tier={game.tier} /></div>
 		<div class="flex items-start justify-between gap-3">
 			<h3 class="line-clamp-2 leading-snug font-bold text-base text-white group-hover:text-mint">
 				{game.title ?? `Steam app ${game.appId}`}

@@ -4,7 +4,7 @@
 
 For a **new installation**, configure `PGADMIN_URL` to an administrator connection on PostgreSQL's `postgres` database, install Python dependencies, run `pnpm db:setup` once, and apply the current baseline with `pnpm db:migrate`. Restore the verified games CSV with `pnpm db:restore:games -- <games.csv>` before starting the app.
 
-The baseline is intended for an empty schema. This repository does not reset a database or automatically drop ProtonDB-era tables. For a database using the previous schema, first create and verify `pnpm db:backup:games`, then review a controlled cutover plan for native reports, auth, devices, and any legacy data before changing its schema. See [database.md](database.md).
+The baseline is intended for an empty schema. `pnpm db:dev:reset -- --force` is restricted to local `tuxgg` development and is destructive; never use it for production or staging. Back up and verify the games catalog first, then pass its CSV with `--games` to restore it during reset. Production schema changes remain an explicit operator migration. See [database.md](database.md).
 
 Run migrations with `tuxgg_migrator`; the web process receives only `DATABASE_URL`. Keep `IMPORTER_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and `PGADMIN_URL` in a host-side secret file or secret manager.
 
@@ -30,7 +30,7 @@ The app listens on container port 3000 and checks `/healthz`, which also verifie
 
 - Run `pnpm db:backup:games` and confirm all verification steps pass before a schema cleanup.
 - Keep the archive and CSV in a secured location outside Git.
-- Use `pnpm steam:sync -- --ids <appids> --dry-run` to preview up to 20 existing games. The default request spacing is at least two seconds.
+- Use `pnpm steam:sync -- --dry-run` to preview stale metadata without Steam requests or database writes. Applied refreshes select at most 10 games by default, can be raised to 20, skip entries fetched in the last 30 days, and wait at least two seconds between requests. Add `--force` only for an intentional refresh.
 - Use `pnpm steam:discover -- --limit 1000` to preview a page of new Steam catalog entries; pass `--apply` to upsert new entries.
 - Keep `NATIVE_REPORT_OPERATOR_DATABASE_URL` outside the web container and use it only for `python scripts/moderate_native_reports.py` commands.
 - Keep database and authentication credentials in a host secret store or a permission-restricted environment file.

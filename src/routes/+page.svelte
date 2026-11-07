@@ -2,6 +2,7 @@
 	import GameCard from '#lib/components/GameCard.svelte';
 	import GameSearch from '#lib/components/GameSearch.svelte';
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
+	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
 	import type { PageData } from './$types';
 	let { data }: { data: PageData } = $props();
 </script>
@@ -183,6 +184,7 @@
 						<div class="truncate font-bold text-white">
 							{game.title ?? `Steam app ${game.appId}`}
 						</div>
+						<div class="mt-2"><CompatibilityBadge tier={game.tier} /></div>
 						<div class="mt-1 text-xs text-muted">
 							{game.reportCount.toLocaleString()} community reports
 						</div>

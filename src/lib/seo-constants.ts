@@ -1,7 +1,14 @@
-export const MIN_INDEXABLE_REPORTS = 3;
+export const MIN_INDEXABLE_DESCRIPTION_LENGTH = 50;
 
-export function isIndexableGame(reportCount: number, title: string | null | undefined): boolean {
+export function isIndexableGame(title: string | null | undefined, metadata: unknown): boolean {
+	if (!title?.trim() || !metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+		return false;
+	}
+	const steam = (metadata as Record<string, unknown>).steam;
+	if (!steam || typeof steam !== 'object' || Array.isArray(steam)) return false;
+	const shortDescription = (steam as Record<string, unknown>).shortDescription;
 	return (
-		Number.isInteger(reportCount) && reportCount >= MIN_INDEXABLE_REPORTS && Boolean(title?.trim())
+		typeof shortDescription === 'string' &&
+		shortDescription.trim().length >= MIN_INDEXABLE_DESCRIPTION_LENGTH
 	);
 }

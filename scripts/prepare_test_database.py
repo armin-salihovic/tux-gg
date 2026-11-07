@@ -147,7 +147,7 @@ def configure_runtime_roles(admin_url: str, test_url: str) -> None:
 def psycopg_connect(url: str):
     import psycopg
 
-    return psycopg.connect(url, autocommit=True)
+    return psycopg.connect(url, autocommit=True, connect_timeout=5)
 
 
 def main() -> int:
@@ -165,7 +165,7 @@ def main() -> int:
         if not admin_url:
             raise RuntimeError("Set PGADMIN_URL to create or verify the dedicated test database.")
         created_database = False
-        with psycopg.connect(admin_url, autocommit=True) as admin, admin.cursor() as admin_cur:
+        with psycopg.connect(admin_url, autocommit=True, connect_timeout=5) as admin, admin.cursor() as admin_cur:
             admin_cur.execute("SELECT current_database()")
             if admin_cur.fetchone()[0] != "postgres":
                 raise RuntimeError("PGADMIN_URL must connect to the postgres maintenance database.")
@@ -174,7 +174,7 @@ def main() -> int:
                 admin_cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(EXPECTED_DATABASE)))
                 created_database = True
 
-        with psycopg.connect(url) as conn, conn.cursor() as cur:
+        with psycopg.connect(url, connect_timeout=5) as conn, conn.cursor() as cur:
             cur.execute("SELECT current_database()")
             if cur.fetchone()[0] != EXPECTED_DATABASE:
                 raise RuntimeError("Refusing to mark any database except tuxgg_test as disposable.")
@@ -208,7 +208,7 @@ def main() -> int:
                 "ON CONFLICT (id) DO NOTHING",
                 (MARKER_VALUE,),
             )
-        with psycopg.connect(admin_url) as conn, conn.cursor() as cur:
+        with psycopg.connect(admin_url, connect_timeout=5) as conn, conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM pg_roles WHERE rolname = ANY(%s)", (list(ROLES),))
             roles_present = cur.fetchone()[0]
         if roles_present == len(ROLES):

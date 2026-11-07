@@ -2,6 +2,7 @@
 	import { formatGpuName } from '#lib/gpu-format.js';
 	import type { PageData } from './$types';
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
+	import CompatibilityBadge from '#lib/components/CompatibilityBadge.svelte';
 	import { isIndexableGame } from '#lib/seo-constants.js';
 	let { data }: { data: PageData } = $props();
 	const gamePath = $derived(
@@ -53,7 +54,7 @@
 			: 'Game compatibility details are temporarily unavailable.'}
 	/>
 	<link rel="canonical" href={data.canonical} />
-	{#if data.filtered || !data.available || !data.game || !isIndexableGame(data.game.reportCount, data.game.titleAvailable ? data.game.title : null)}
+	{#if data.filtered || !data.available || !data.game || !isIndexableGame(data.game.titleAvailable ? data.game.title : null, data.game.metadata)}
 		<meta name="robots" content="noindex,follow" />
 	{/if}
 	{#if data.available && data.game}
@@ -117,6 +118,16 @@
 						<span class="px-1.5 text-slate-600">·</span>
 						Does not work: <strong class="text-rose-200">{data.game.noCount}</strong>
 					</p>
+					<div class="mt-3 flex flex-wrap items-center gap-3">
+						<CompatibilityBadge tier={data.game.tier} />
+						{#if data.game.weightedScore !== null}
+							<span class="text-xs text-muted">
+								{Math.round(data.game.weightedScore * 100)}% positive · effective sample {data.game.effectiveSampleSize.toFixed(1)}
+							</span>
+						{:else}
+							<span class="text-xs text-muted">Not enough published reports to rate</span>
+						{/if}
+					</div>
 					{#if steam?.shortDescription}<p class="mt-4 max-w-2xl text-sm leading-6 text-slate-300">{steam.shortDescription}</p>{/if}
 					{#if data.game.reportCount && data.game.lastReportAt}<p class="mt-2 text-xs text-muted">Latest report: {dateFormat.format(data.game.lastReportAt)}</p>{/if}
 				</div>

@@ -32,12 +32,20 @@ pnpm db:restore:games -- "<path-to-tuxgg-games-YYYYMMDD.csv>"
 
 The restore is idempotent on `app_id`. It keeps existing non-empty titles and artwork when the CSV value is empty, recursively merges JSONB without discarding unknown keys, and keeps the earliest `created_at` and latest `updated_at` on conflicts.
 
-## Existing legacy database
+## Local development reset
 
-The checked-in baseline is for a clean schema. It does not automatically reset a database, delete imported-report tables, or convert an old Drizzle migration ledger. For a database with the previous schema, create and verify the full games backup first. Review an explicit cutover plan for auth, devices, and native reports before applying any schema cleanup. No destructive cleanup is run by `pnpm db:backup:games` or `pnpm db:migrate`.
+For a deliberate rebuild of the local development database, first run `pnpm db:backup:games` and confirm the external CSV, custom archive, and manifest were verified. Then pass that CSV to:
+
+```sh
+pnpm db:dev:reset -- --force --games "<path-to-verified-games.csv>"
+```
+
+The command checks the manifest hashes and counts, requires `NODE_ENV` other than `production`, and accepts only a local `tuxgg` connection using `tuxgg_migrator` plus a local `postgres` administrator. It rebuilds the schema and Drizzle ledger, runs the baseline and grants, imports the optional catalog, then compares restored AppIDs, values, timestamps, schema objects, and grants. It does not touch production or remote databases. A reset discards development users, sessions, devices, and reports.
+
+For a new empty database, continue to use `pnpm db:migrate` rather than the destructive reset. For a catalog-only restore into an already migrated database, use `pnpm db:restore:games -- <games.csv>`.
 
 ## Disposable integration database
 
 `pnpm db:test:prepare` creates or verifies only `tuxgg_test` and places a safety marker before integration tests use it. Point `TEST_DATABASE_URL` to an administrator connection for this disposable database. Tests that use application roles require `DATABASE_URL` to use `tuxgg_web` and `MIGRATION_DATABASE_URL` to use `tuxgg_migrator` on `tuxgg_test`. Do not point test commands at the live database.
 
-The CI workflow provisions an ephemeral PostgreSQL service, applies the baseline independently to `tuxgg` and `tuxgg_test`, verifies database grants, and runs auth, native-report, device, and browser checks.
+The CI workflow provisions an ephemeral PostgreSQL service, applies the baseline independently to `tuxgg` and `tuxgg_test`, verifies grants for the web, importer, and migration roles, runs backup/restore integration fixtures, and runs auth, native-report, device, browser, and build checks.

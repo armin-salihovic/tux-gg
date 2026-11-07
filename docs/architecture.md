@@ -29,7 +29,11 @@ Native reports retain foreign keys to `games` and `user`. The web role can read 
 
 `pnpm db:backup:games` exports the complete existing games table to a PostgreSQL archive and CSV outside the repository. It verifies the CSV, AppIDs, archive readability, and restore in a disposable database before reporting success. `pnpm db:restore:games -- <csv>` restores rows with AppID-based upserts and recursive metadata merging.
 
-`pnpm steam:sync` refreshes a maximum of 20 catalog entries per run, one request at a time, with at least two seconds between requests. It can preview without database writes. `pnpm steam:discover` uses Steamworks `IStoreService/GetAppList` pages to find additional game AppIDs and names; it skips existing rows and does not request detailed metadata for every discovered game.
+`pnpm steam:sync` refreshes stale metadata for at most 10 games by default and 20 per run at most. Successful responses carry a 30-day `lastFetchedAt` cache timestamp. Requests are sequential, spaced at least two seconds apart, and use bounded retries. `--force` bypasses freshness checks. `--dry-run` reads the catalog to preview work and makes no Steam requests or database writes. `pnpm steam:discover` uses Steamworks `IStoreService/GetAppList` pages to find additional game AppIDs and names; it skips existing rows and does not request detailed metadata for every discovered game.
+
+Public compatibility is calculated from published native yes/no reports. Each report's recency weight has a 365-day half-life. Pending, hidden, and removed reports are excluded, and the tier remains Unknown until total weight and effective sample size both reach three. Changes to moderation state are reflected on the next query. No compatibility summary table is materialized.
+
+Game page indexability requires a non-empty title and a Steam short description of at least 50 characters. The sitemap query applies that same rule.
 
 ## Security and reports
 

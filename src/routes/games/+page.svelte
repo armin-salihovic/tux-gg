@@ -73,7 +73,10 @@
 			><option value="title" selected={data.sort === 'title'}>Title</option><option
 				value="reports"
 				selected={data.sort === 'reports'}>Most community reports</option
-			><option value="recent" selected={data.sort === 'recent'}>Recently reported</option></select
+			><option value="recent" selected={data.sort === 'recent'}>Recently reported</option><option
+				value="tier"
+				selected={data.sort === 'tier'}>Compatibility tier</option
+			></select
 		>
 		<button
 			class="rounded-xl bg-mint px-5 py-3 text-sm font-extrabold text-ink transition hover:bg-lime"

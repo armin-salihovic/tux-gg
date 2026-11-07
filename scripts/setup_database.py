@@ -17,7 +17,6 @@ MAINTENANCE_DATABASE = "postgres"
 WEB_ROLE = "tuxgg_web"
 IMPORTER_ROLE = "tuxgg_importer"
 MIGRATION_ROLE = "tuxgg_migrator"
-LEGACY_ROLE = "tuxgg_app"
 
 TABLES = (
     "games",
@@ -27,7 +26,6 @@ TABLES = (
     "verification",
     "native_reports",
     "user_devices",
-    "__drizzle_migrations",
 )
 SEQUENCES: tuple[str, ...] = ()
 WEB_PRIVILEGES = {
@@ -166,7 +164,7 @@ def connect(url: str):
         raise RuntimeError(
             "Install database setup dependencies first: python -m pip install -r scripts/requirements.txt"
         ) from exc
-    return psycopg.connect(url, autocommit=True)
+    return psycopg.connect(url, autocommit=True, connect_timeout=5)
 
 
 def _role_exists(cur, role: str) -> bool:
@@ -239,13 +237,14 @@ def _url_for_role(
         else environment_url or file_url
     )
     if _role_exists(cur, role):
-        if not existing_url:
-            raise RuntimeError(
-                f"The {role} role already exists, but {env_key} is unavailable to verify its password."
-            )
-        if urlsplit(existing_url).username != role:
-            raise RuntimeError(f"{env_key} must use the dedicated {role} role after it exists.")
-        return url_for_database(existing_url, DATABASE)
+        if existing_url and urlsplit(existing_url).username == role:
+            return url_for_database(existing_url, DATABASE)
+        password = secrets.token_urlsafe(36)
+        cur.execute(
+            sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(role), sql.Literal(password))
+        )
+        new_values[env_key] = url_for_database(admin_url, DATABASE, role, password)
+        return new_values[env_key]
 
     password = secrets.token_urlsafe(36)
     _create_login_role(cur, role, password)
@@ -259,7 +258,7 @@ def _prepare_database(admin_url: str, database_exists: bool) -> None:
     with connect(admin_url) as conn:
         _verify_admin_database(conn)
         with conn.cursor() as cur:
-            for role in (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE, LEGACY_ROLE):
+            for role in (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE):
                 if _role_exists(cur, role):
                     _validate_role(cur, role)
             if not database_exists:
@@ -278,21 +277,18 @@ def _prepare_database(admin_url: str, database_exists: bool) -> None:
             cur.execute(
                 sql.SQL("REVOKE CREATE ON DATABASE {} FROM PUBLIC").format(sql.Identifier(DATABASE))
             )
-            for role in (WEB_ROLE, IMPORTER_ROLE, LEGACY_ROLE):
-                if _role_exists(cur, role):
-                    cur.execute(
-                        sql.SQL("REVOKE CREATE ON DATABASE {} FROM {}").format(
-                            sql.Identifier(DATABASE), sql.Identifier(role)
-                        )
+            for role in (WEB_ROLE, IMPORTER_ROLE):
+                cur.execute(
+                    sql.SQL("REVOKE CREATE ON DATABASE {} FROM {}").format(
+                        sql.Identifier(DATABASE), sql.Identifier(role)
                     )
+                )
 
 
-def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
+def _grant_runtime_access(database_admin_url: str) -> None:
     from psycopg import sql
 
     roles = [WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE]
-    if legacy_exists:
-        roles.append(LEGACY_ROLE)
     revoke_roles = [role for role in roles if role != MIGRATION_ROLE]
     with connect(database_admin_url) as conn:
         with conn.cursor() as cur:
@@ -304,7 +300,7 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                 (DATABASE,),
             )
             database_owner = cur.fetchone()[0]
-            if database_owner in (WEB_ROLE, IMPORTER_ROLE, LEGACY_ROLE):
+            if database_owner in (WEB_ROLE, IMPORTER_ROLE):
                 raise RuntimeError("A runtime role owns the TuxGG database; transfer ownership before setup.")
 
             cur.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
@@ -350,17 +346,13 @@ def _grant_runtime_access(database_admin_url: str, legacy_exists: bool) -> None:
                         )
                     )
                 if table in WEB_PRIVILEGES:
-                    for role in (WEB_ROLE, LEGACY_ROLE) if legacy_exists else (WEB_ROLE,):
-                        cur.execute(
-                            sql.SQL("GRANT " + WEB_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(
-                                sql.Identifier(table), sql.Identifier(role)
-                            )
+                    cur.execute(
+                        sql.SQL("GRANT " + WEB_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(
+                            sql.Identifier(table), sql.Identifier(WEB_ROLE)
                         )
-                if table == "native_reports":
-                    grant_native_report_insert_columns(
-                        cur,
-                        (WEB_ROLE, LEGACY_ROLE) if legacy_exists else (WEB_ROLE,),
                     )
+                if table == "native_reports":
+                    grant_native_report_insert_columns(cur, (WEB_ROLE,))
                 if table in IMPORTER_PRIVILEGES:
                     cur.execute(
                         sql.SQL("GRANT " + IMPORTER_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(
@@ -402,14 +394,13 @@ def run(grant_only: bool) -> None:
             with conn.cursor() as cur:
                 if not _role_exists(cur, WEB_ROLE) or not _role_exists(cur, IMPORTER_ROLE) or not _role_exists(cur, MIGRATION_ROLE):
                     raise RuntimeError("Run database setup first so the web, importer, and migration roles exist.")
-                legacy_exists = _role_exists(cur, LEGACY_ROLE)
-                for role in (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE, LEGACY_ROLE):
+                for role in (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE):
                     if _role_exists(cur, role):
                         _validate_role(cur, role)
                 cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DATABASE,))
                 if cur.fetchone() is None:
                     raise RuntimeError("The tuxgg database does not exist; run setup without --grant-only first.")
-        _grant_runtime_access(url_for_database(admin_url, DATABASE), legacy_exists)
+        _grant_runtime_access(url_for_database(admin_url, DATABASE))
         print("TuxGG-only runtime grants refreshed for the web and importer roles.")
         return
 
@@ -430,14 +421,7 @@ def run(grant_only: bool) -> None:
             database_exists = cur.fetchone() is not None
 
     _prepare_database(admin_url, database_exists)
-    legacy_exists = False
-    with connect(admin_url) as conn:
-        with conn.cursor() as cur:
-            legacy_exists = _role_exists(cur, LEGACY_ROLE)
-            if legacy_exists:
-                _validate_role(cur, LEGACY_ROLE)
-
-    _grant_runtime_access(url_for_database(admin_url, DATABASE), legacy_exists)
+    _grant_runtime_access(url_for_database(admin_url, DATABASE))
     for role, env_key in (
         (WEB_ROLE, "DATABASE_URL"),
         (IMPORTER_ROLE, "IMPORTER_DATABASE_URL"),

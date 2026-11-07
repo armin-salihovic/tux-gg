@@ -44,11 +44,12 @@ def main() -> int:
 				"SELECT d.datname, pg_get_userbyid(d.datdba) AS owner, d.datallowconn AS accepts_connections "
 				"FROM pg_database d WHERE d.datname = 'tuxgg'"
 			).fetchone()
-			result["project_role"] = conn.execute(
+			result["project_roles"] = conn.execute(
 				"SELECT rolname, rolsuper AS is_superuser, rolcreatedb AS can_create_database, "
 				"rolcreaterole AS can_create_roles, rolcanlogin AS can_login "
-				"FROM pg_roles WHERE rolname = 'tuxgg_app'"
-			).fetchone()
+				"FROM pg_roles WHERE rolname IN ('tuxgg_web', 'tuxgg_importer', 'tuxgg_migrator') "
+				"ORDER BY rolname"
+			).fetchall()
 		if result["target_database"]:
 			parts = urlsplit(admin_url)
 			target_url = urlunsplit((parts.scheme, parts.netloc, "/tuxgg", parts.query, ""))
