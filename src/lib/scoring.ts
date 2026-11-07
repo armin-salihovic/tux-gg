@@ -1,6 +1,7 @@
 export const TIERS = ['platinum', 'gold', 'silver', 'bronze', 'borked', 'unknown'] as const;
 export type CompatibilityTier = (typeof TIERS)[number];
 export const MIN_TOTAL_WEIGHT = 3 - 1e-6;
+export const MIN_EFFECTIVE_SAMPLE_SIZE = 3 - 1e-6;
 
 export const TIER_LABELS: Record<CompatibilityTier, string> = {
 	platinum: 'Platinum',
@@ -29,7 +30,11 @@ export function tierForEvidence(
 	totalWeight: number,
 	effectiveSampleSize: number
 ): CompatibilityTier {
-	if (weightedScore === null || totalWeight < MIN_TOTAL_WEIGHT || effectiveSampleSize < 3) {
+	if (
+		weightedScore === null ||
+		totalWeight < MIN_TOTAL_WEIGHT ||
+		effectiveSampleSize < MIN_EFFECTIVE_SAMPLE_SIZE
+	) {
 		return 'unknown';
 	}
 	if (weightedScore >= 0.95) return 'platinum';

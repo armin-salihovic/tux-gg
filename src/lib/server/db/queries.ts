@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import { getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authUser, games, nativeReports } from '#lib/server/db/schema.js';
-import { MIN_TOTAL_WEIGHT, tierForEvidence } from '#lib/scoring.js';
+import { MIN_EFFECTIVE_SAMPLE_SIZE, MIN_TOTAL_WEIGHT, tierForEvidence } from '#lib/scoring.js';
 
 export type CatalogSort = 'title' | 'reports' | 'recent' | 'tier';
 
@@ -98,7 +98,7 @@ export async function getCatalog(query: GameQuery) {
 				? 'last_report_at DESC NULLS LAST, g.updated_at DESC, g.title ASC NULLS LAST, g.app_id ASC'
 				: query.sort === 'tier'
 					? `CASE WHEN r.weighted_score IS NULL OR r.total_weight < ${MIN_TOTAL_WEIGHT} OR
-							(r.total_weight * r.total_weight / nullif(r.squared_weight, 0)) < 3 THEN 6
+							(r.total_weight * r.total_weight / nullif(r.squared_weight, 0)) < ${MIN_EFFECTIVE_SAMPLE_SIZE} THEN 6
 							WHEN r.weighted_score >= 0.95 THEN 1 WHEN r.weighted_score >= 0.8 THEN 2
 							WHEN r.weighted_score >= 0.6 THEN 3 WHEN r.weighted_score >= 0.3 THEN 4 ELSE 5 END,
 							r.weighted_score DESC NULLS LAST, report_count DESC, g.title ASC NULLS LAST`

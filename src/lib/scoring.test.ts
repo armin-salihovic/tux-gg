@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_TOTAL_WEIGHT, recencyWeight, scoreCompatibility, tierForEvidence } from './scoring.js';
+import {
+	MIN_EFFECTIVE_SAMPLE_SIZE,
+	MIN_TOTAL_WEIGHT,
+	recencyWeight,
+	scoreCompatibility,
+	tierForEvidence
+} from './scoring.js';
 
 describe('TuxGG native compatibility scoring', () => {
 	const now = new Date('2026-01-01T00:00:00.000Z');
@@ -14,6 +20,8 @@ describe('TuxGG native compatibility scoring', () => {
 		expect(tierForEvidence(1, 2.99, 5)).toBe('unknown');
 		expect(tierForEvidence(1, 5, 2.99)).toBe('unknown');
 		expect(tierForEvidence(1, MIN_TOTAL_WEIGHT, 3)).toBe('platinum');
+		expect(tierForEvidence(1, 3, MIN_EFFECTIVE_SAMPLE_SIZE)).toBe('platinum');
+		expect(tierForEvidence(1, 3, 3 - 2e-6)).toBe('unknown');
 		expect(scoreCompatibility([report('yes'), report('yes'), report('yes')], now).tier).toBe(
 			'platinum'
 		);
