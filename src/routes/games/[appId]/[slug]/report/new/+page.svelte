@@ -13,15 +13,14 @@
 	let submitting = $state(false);
 	let selectedDeviceId = $state('');
 	$effect(() => {
+		if (data.devices.some((device) => device.id === selectedDeviceId)) return;
 		const submittedDeviceId = form?.values?.deviceId;
 		if (submittedDeviceId && data.devices.some((device) => device.id === submittedDeviceId)) {
 			selectedDeviceId = submittedDeviceId;
 			return;
 		}
-		if (!data.devices.some((device) => device.id === selectedDeviceId)) {
-			selectedDeviceId =
-				data.devices.find((device) => device.isDefault)?.id ?? data.devices[0]?.id ?? '';
-		}
+		selectedDeviceId =
+			data.devices.find((device) => device.isDefault)?.id ?? data.devices[0]?.id ?? '';
 	});
 	const selectedDevice = $derived(data.devices.find((device) => device.id === selectedDeviceId));
 	const fieldError = (name: string) => form?.errors?.[name]?.[0];
