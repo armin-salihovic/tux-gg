@@ -165,7 +165,3 @@ jobs:
           DB_DATABASE: vapourdb_test
           VAPOURDB_TEST_DATABASE: '1'
           GITHUB_ACTIONS: 'true'
-          NODE_ENV: production
-          BETTER_AUTH_URL: https://localhost:5173
-          PUBLIC_SITE_URL: https://localhost:5173
-          STEAM_API_KEY: ci-mocked-steam-api-key
