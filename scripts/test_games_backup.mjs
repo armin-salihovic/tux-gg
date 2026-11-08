@@ -6,12 +6,11 @@ import { createHash, randomInt } from 'node:crypto';
 import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import dotenv from 'dotenv';
 import pg from 'pg';
 import { loadLocalEnv, parseGamesCsv } from './games-catalog.mjs';
 import { verifyGamesBackup } from './verify_games_backup.mjs';
 import { DATABASE_IDENTITIES } from './database-identifiers.mjs';
-import { requireDatabaseRoleUrl } from './database-safety.mjs';
+import { resolveDatabaseUrl } from './database-connection.mjs';
 
 loadLocalEnv();
 
@@ -29,14 +28,6 @@ function run(command, args, env) {
 	return result.stdout;
 }
 
-function requireTestUrl(raw, variable, role) {
-	const { url, database } = requireDatabaseRoleUrl(raw, variable, role, true);
-	const identity = DATABASE_IDENTITIES.vapourdb;
-	if (database !== identity.test)
-		throw new Error(`${variable} must use ${role} on the marked ${identity.test} database.`);
-	return url;
-}
-
 async function sha256(filePath) {
 	return createHash('sha256')
 		.update(await readFile(filePath))
@@ -44,30 +35,16 @@ async function sha256(filePath) {
 }
 
 async function main() {
-	const localEnv = dotenv.parse(await readFile('.env', 'utf8').catch(() => ''));
-	const sourceUrl = process.env.MIGRATION_DATABASE_URL || localEnv.MIGRATION_DATABASE_URL;
-	const importerUrl = process.env.IMPORTER_DATABASE_URL || localEnv.IMPORTER_DATABASE_URL;
-	const testAdminUrl = process.env.TEST_DATABASE_URL || localEnv.TEST_DATABASE_URL;
-	const adminUrl = process.env.PGADMIN_URL || localEnv.PGADMIN_URL;
-	const source = requireTestUrl(
-		sourceUrl,
-		'MIGRATION_DATABASE_URL',
-		DATABASE_IDENTITIES.vapourdb.roles.migrator
-	);
-	const target = requireTestUrl(
-		importerUrl,
-		'IMPORTER_DATABASE_URL',
-		DATABASE_IDENTITIES.vapourdb.roles.importer
-	);
-	const disposableAdmin = requireTestUrl(testAdminUrl, 'TEST_DATABASE_URL', 'postgres');
-	if (!adminUrl || new URL(adminUrl).pathname.replace(/^\//, '') !== 'postgres')
+	if (process.env.GITHUB_ACTIONS !== 'true' || process.env.VAPOURDB_TEST_DATABASE !== '1')
 		throw new Error(
-			'PGADMIN_URL must be the PostgreSQL maintenance connection for the disposable CI server.'
+			'Backup integration tests are restricted to the explicitly marked CI database.'
 		);
+	const connection = resolveDatabaseUrl('backup');
+	if (connection.summary.database !== DATABASE_IDENTITIES.vapourdb.test)
+		throw new Error('Backup integration tests require vapourdb_test.');
 	const workDir = await mkdtemp(path.join(os.tmpdir(), 'vapourdb-backup-test-'));
-	const sourceClient = new pg.Client({ connectionString: source.toString() });
-	const targetClient = new pg.Client({ connectionString: target.toString() });
-	const testAdmin = new pg.Client({ connectionString: disposableAdmin.toString() });
+	const sourceClient = new pg.Client(connection.options);
+	const targetClient = new pg.Client(connection.options);
 	const appIdPrefix = '999999999';
 	const appIdA = `${appIdPrefix}${randomInt(100_000_000, 1_000_000_000)}`;
 	let appIdB = `${appIdPrefix}${randomInt(100_000_000, 1_000_000_000)}`;
@@ -83,29 +60,21 @@ async function main() {
 	try {
 		await sourceClient.connect();
 		await targetClient.connect();
-		await testAdmin.connect();
 		const sourceIdentity = await sourceClient.query(
 			'SELECT current_database() AS database, current_user AS role'
 		);
 		assert.deepEqual(sourceIdentity.rows[0], {
 			database: DATABASE_IDENTITIES.vapourdb.test,
-			role: DATABASE_IDENTITIES.vapourdb.roles.migrator
+			role: connection.options.user
 		});
 		const targetIdentity = await targetClient.query(
 			'SELECT current_database() AS database, current_user AS role'
 		);
 		assert.deepEqual(targetIdentity.rows[0], {
 			database: DATABASE_IDENTITIES.vapourdb.test,
-			role: DATABASE_IDENTITIES.vapourdb.roles.importer
+			role: connection.options.user
 		});
-		const adminIdentity = await testAdmin.query(
-			'SELECT current_database() AS database, current_user AS role'
-		);
-		assert.deepEqual(adminIdentity.rows[0], {
-			database: DATABASE_IDENTITIES.vapourdb.test,
-			role: 'postgres'
-		});
-		const marker = await testAdmin.query(
+		const marker = await targetClient.query(
 			`SELECT marker FROM public.${DATABASE_IDENTITIES.vapourdb.markerTable} WHERE id = 1`
 		);
 		assert.equal(marker.rows[0]?.marker, DATABASE_IDENTITIES.vapourdb.markerValue);
@@ -136,8 +105,6 @@ async function main() {
 		const backupDir = path.join(workDir, 'backup');
 		const env = {
 			...process.env,
-			GAMES_BACKUP_DATABASE_URL: source.toString(),
-			GAMES_BACKUP_VERIFY_ADMIN_URL: adminUrl,
 			VAPOURDB_BACKUP_DIR: backupDir
 		};
 		const output = run(process.execPath, ['scripts/backup_games.mjs'], env);
@@ -210,9 +177,11 @@ async function main() {
 		);
 		const restoreEnv = {
 			...env,
-			IMPORTER_DATABASE_URL: target.toString(),
-			VAPOURDB_DATABASE_MODE: 'production'
+			VAPOURDB_TEST_DATABASE: '1'
 		};
+		await targetClient.query('DELETE FROM public.games WHERE app_id = ANY($1::text[])', [
+			[appIdA, appIdB]
+		]);
 		run(process.execPath, ['scripts/restore_games.mjs', csvPath], restoreEnv);
 		const countAfterFirst = Number(
 			(await targetClient.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
@@ -252,11 +221,7 @@ async function main() {
 			await sourceClient
 				.query('DELETE FROM public.games WHERE app_id = ANY($1::text[])', [[appIdA, appIdB]])
 				.catch(() => {});
-		await Promise.all([
-			sourceClient.end().catch(() => {}),
-			targetClient.end().catch(() => {}),
-			testAdmin.end().catch(() => {})
-		]);
+		await Promise.all([sourceClient.end().catch(() => {}), targetClient.end().catch(() => {})]);
 		await rm(workDir, { recursive: true, force: true });
 	}
 }

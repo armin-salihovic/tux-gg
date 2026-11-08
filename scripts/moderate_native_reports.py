@@ -1,44 +1,39 @@
 #!/usr/bin/env python3
-"""List and moderate native VapourDB reports using an operator-only database URL."""
+"""List and moderate VapourDB reports using the configured DB_* account."""
 
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 import uuid
 
 import psycopg
 try:
-    from .setup_database import DATABASE_IDENTITIES
+    from .db_config import database_settings
 except ImportError:
-    from setup_database import DATABASE_IDENTITIES
+    from db_config import database_settings
 TRANSITIONS = {"approve": "published", "hide": "hidden", "remove": "removed"}
 
 
 def verify_operator_connection(conn) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT current_database(), current_user, operator_role.rolsuper, "
+            "SELECT current_database(), current_user, "
             "has_table_privilege(current_user, 'public.native_reports', 'SELECT'), "
             "has_table_privilege(current_user, 'public.native_reports', 'UPDATE') "
-            "FROM pg_roles AS operator_role WHERE operator_role.rolname = current_user"
         )
         row = cur.fetchone()
         if not row:
             raise RuntimeError("Could not verify the operator database connection.")
-        database, role, is_superuser, can_select, can_update = row
-        identity = DATABASE_IDENTITIES.get(database)
-        if identity is None or not (database.endswith("_test") or database == identity[0]):
-            raise RuntimeError("Moderation is allowed only on VapourDB or legacy TuxGG databases.")
-        if role in identity[1:3] or is_superuser:
-            raise RuntimeError("Use a non-administrator operator or migration role for moderation.")
+        database, _role, can_select, can_update = row
+        if database not in ("vapourdb", "vapourdb_test"):
+            raise RuntimeError("Moderation is allowed only on vapourdb or the marked vapourdb_test database.")
         if not can_select or not can_update:
             raise RuntimeError("The configured operator role cannot moderate native reports.")
-        if database.endswith("_test"):
-            marker_table = f"{database}_safety_marker"
-            marker_value = f"{identity[0]}_disposable_test_database_v1"
+        if database == "vapourdb_test":
+            marker_table = "vapourdb_test_safety_marker"
+            marker_value = "vapourdb_disposable_test_database_v1"
             cur.execute(f"SELECT marker FROM public.{marker_table} WHERE id = 1")
             marker = cur.fetchone()
             if marker is None or marker[0] != marker_value:
@@ -84,13 +79,9 @@ def main() -> int:
         command = subparsers.add_parser(action, help=f"set a report to {TRANSITIONS[action]}")
         command.add_argument("report_id", type=uuid.UUID, help="native report UUID")
     args = parser.parse_args()
-    database_url = os.environ.get("NATIVE_REPORT_OPERATOR_DATABASE_URL")
-    if not database_url:
-        print("Set NATIVE_REPORT_OPERATOR_DATABASE_URL for this operator command.", file=sys.stderr)
-        return 2
-
     try:
-        with psycopg.connect(database_url) as conn:
+        settings = database_settings(allow_test=True)
+        with psycopg.connect(**settings) as conn:
             verify_operator_connection(conn)
             if args.action == "list":
                 rows = list_pending(conn)

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { loadLocalEnv, slugify } from './games-catalog.mjs';
-import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 import {
 	createDatabaseClient,
 	normalizePnpmArgs,
@@ -60,29 +59,13 @@ try {
 		operation: options.apply ? 'steamWrite' : 'steamRead',
 		requireLocalOwner: false
 	});
-	client = createDatabaseClient(databaseConnection.raw, 'vapourdb-steam-catalog-discovery');
+	client = createDatabaseClient(databaseConnection, 'vapourdb-steam-catalog-discovery');
 	await client.connect();
 	const connection = await client.query(
 		'SELECT current_database() AS database, current_user AS role'
 	);
-	const databaseName = connection.rows[0]?.database;
-	const databaseIdentity = identityForDatabase(databaseName);
-	const testIdentity = testIdentityForDatabase(databaseName);
-	const expectedRole =
-		databaseConnection.mode === 'development'
-			? databaseConnection.expectedRole
-			: options.apply
-				? databaseIdentity?.roles.importer
-				: databaseIdentity?.roles.web;
-	if (!databaseIdentity || connection.rows[0]?.role !== expectedRole)
-		throw new Error('Refusing to update an unrecognized database.');
-	if (testIdentity) {
-		const marker = await client
-			.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)
-			.catch(() => ({ rows: [] }));
-		if (marker.rows[0]?.marker !== testIdentity.markerValue)
-			throw new Error('Refusing to update a test database without its disposable safety marker.');
-	}
+	if (connection.rows[0]?.database !== databaseConnection.summary.database)
+		throw new Error('Refusing to update a different database than DB_DATABASE.');
 
 	let cursor = 0;
 	let fetched = 0;

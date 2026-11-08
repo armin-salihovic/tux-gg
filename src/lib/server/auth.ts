@@ -1,7 +1,11 @@
 import {
 	BETTER_AUTH_SECRET,
 	BETTER_AUTH_URL,
-	DATABASE_URL,
+	DB_CONNECTION,
+	DB_DATABASE,
+	DB_HOST,
+	DB_PORT,
+	DB_USERNAME,
 	PUBLIC_SITE_URL,
 	STEAM_API_KEY,
 	NODE_ENV
@@ -13,7 +17,16 @@ import { getDb } from '#lib/server/db/db.js';
 import { steamOpenID } from '#lib/server/steam-auth.js';
 
 export function isAuthConfigured(): boolean {
-	return Boolean(DATABASE_URL && BETTER_AUTH_SECRET && BETTER_AUTH_URL && PUBLIC_SITE_URL);
+	return Boolean(
+		DB_CONNECTION?.toLowerCase() === 'pgsql' &&
+		DB_HOST &&
+		DB_PORT &&
+		DB_DATABASE &&
+		DB_USERNAME &&
+		BETTER_AUTH_SECRET &&
+		BETTER_AUTH_URL &&
+		PUBLIC_SITE_URL
+	);
 }
 
 function createAuth() {
@@ -56,7 +69,7 @@ let instance: AuthInstance | undefined;
 export function getAuth(): AuthInstance {
 	if (!isAuthConfigured()) {
 		throw new Error(
-			'Sign-in is not configured. Set DATABASE_URL, BETTER_AUTH_URL, PUBLIC_SITE_URL, and BETTER_AUTH_SECRET.'
+			'Sign-in is not configured. Set DB_* fields, BETTER_AUTH_URL, PUBLIC_SITE_URL, and BETTER_AUTH_SECRET.'
 		);
 	}
 	return (instance ??= createAuth());

@@ -7,7 +7,6 @@ VapourDB is a searchable Steam game catalog for Linux and Steam Deck players. It
 - Node.js 24 or newer
 - pnpm 11
 - PostgreSQL 15 or newer
-- Python 3.11 or newer for database provisioning and test setup
 
 ## Local setup
 
@@ -20,24 +19,31 @@ The primary local workflow is a PostgreSQL Docker container with the application
    Copy-Item .env.example .env
    ```
 
-2. In `.env`, set a private `BETTER_AUTH_SECRET`. The example keeps the database and browser URLs on `127.0.0.1`; use the Docker-published PostgreSQL host port.
-3. Check the host port, then verify the configured URL:
+2. In `.env`, set `DB_PASSWORD` to the running PostgreSQL account's password and set a private `BETTER_AUTH_SECRET`. The example uses the Docker-published PostgreSQL host port and keeps browser URLs on `127.0.0.1`.
+3. Check the host port and current database connection:
 
    ```powershell
    docker ps --format "table {{.Names}}`t{{.Ports}}"
    Test-NetConnection 127.0.0.1 -Port 5432
+   ```
+
+4. Run setup and inspect the connection:
+
+   ```powershell
+   pnpm db:setup
    pnpm db:doctor
    ```
 
-4. Run `pnpm db:setup`. If `vapourdb` and `vapourdb_dev` do not exist, run `pnpm db:setup -- --bootstrap`; it asks once for a maintenance URL with hidden input. This requires an administrator allowed to create a role and database. The admin connection is not saved. Setup never takes over an existing database or changes a role password.
+   Setup creates the missing `vapourdb` database through PostgreSQL's `postgres` maintenance database using the same `DB_USERNAME` and `DB_PASSWORD`, then verifies schema permissions. The login needs `CREATEDB` only when `vapourdb` is missing; no prompt or extra connection setting is used.
+
 5. Run `pnpm db:migrate`. To load an exported catalog, run `pnpm db:restore:games -- "C:\path\to\tuxgg-games-YYYYMMDD.csv"`, then verify it with `pnpm db:games:count`.
 6. Start the app on the same browser origin:
 
    ```powershell
-   pnpm exec vite dev --host 127.0.0.1 --port 5174 --strictPort
+   pnpm dev
    ```
 
-Ordinary local database commands use only `DATABASE_URL`. See [database setup and recovery](docs/database.md) for bootstrap details and troubleshooting.
+All application and database commands use the one `DB_*` account in `.env`. See [database setup and recovery](docs/database.md) for privileges and troubleshooting.
 
 The baseline contains the Steam AppID catalog, Better Auth tables, saved devices, and native reports. Compatibility is calculated from published native reports when pages load. Pending, hidden, and removed reports do not affect ratings. A game needs at least three recency-weighted reports and an effective sample size of three before it receives a compatibility tier.
 
@@ -49,7 +55,7 @@ Before catalog maintenance, create and verify a backup:
 pnpm db:backup:games
 ```
 
-The command writes a PostgreSQL custom archive, CSV, and SHA-256 manifest outside the repository. It checks the AppID set, restores the archive to a disposable database, and compares representative metadata and timestamps. Files use a `vapourdb-games-YYYYMMDD` or `tuxgg-games-YYYYMMDD` name matching the source database. The default directory is `%USERPROFILE%\.vapourdb-backups` on Windows or `~/.vapourdb-backups` elsewhere. Set `VAPOURDB_BACKUP_DIR` to choose another private external directory; the deprecated `TUXGG_BACKUP_DIR` variable remains a fallback.
+The command writes a PostgreSQL custom archive, CSV, and SHA-256 manifest outside the repository. If the configured login has `CREATEDB`, it verifies the archive by restoring into a uniquely named disposable database and then removes only that database. Without `CREATEDB`, it reports the reduced verification level: CSV rows, AppIDs, checksums, and archive readability are checked, but a full archive restore is not claimed. Files use a `vapourdb-games-YYYYMMDD` or `tuxgg-games-YYYYMMDD` name matching the source database. The default directory is `%USERPROFILE%\.vapourdb-backups` on Windows or `~/.vapourdb-backups` elsewhere. Set `VAPOURDB_BACKUP_DIR` to choose another private external directory.
 
 Restore an external catalog CSV after the schema is ready:
 
@@ -66,11 +72,11 @@ Steam OpenID is the only sign-in provider. Better Auth stores Steam-linked accou
 
 Signed-in players can save Linux PCs and Steam Decks under **Settings → Devices**. Reports require a validated device, remain private while pending, and become public only after operator review. See [device handling](docs/devices.md) and [native reports](docs/native-reports.md).
 
-In production, the web role cannot edit the catalog or moderate reports. The importer can upsert games but cannot read account data. Migration/admin/importer credentials and Better Auth secrets stay out of Git and out of the web container.
+In production, use a dedicated non-superuser PostgreSQL account with only the database and schema privileges the application needs. Keep the account password and Better Auth secret out of Git.
 
 ## Development safety
 
-`pnpm db:setup` is read-only and idempotent for an existing local installation. It does not reset schemas, change passwords, or rewrite `.env`. The old `tuxgg` database is never selected by local write commands.
+`pnpm db:setup` is non-interactive and repeatable. It never resets an existing database, changes passwords, or rewrites `.env`. Application setup and writes require `DB_DATABASE=vapourdb`; the legacy `tuxgg` database is never selected.
 
 Integration tests use only the marked `vapourdb_test` database. Database backup fixtures verify the test marker before inserting rows, and browser fixtures refuse any other database.
 

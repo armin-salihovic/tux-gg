@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { loadLocalEnv, MERGE_METADATA_FUNCTION, slugify } from './games-catalog.mjs';
-import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 import {
 	createDatabaseClient,
 	normalizePnpmArgs,
@@ -97,29 +96,13 @@ async function main() {
 			operation: options.dryRun ? 'steamRead' : 'steamWrite',
 			requireLocalOwner: false
 		});
-		client = createDatabaseClient(databaseConnection.raw, 'vapourdb-steam-metadata-sync');
+		client = createDatabaseClient(databaseConnection, 'vapourdb-steam-metadata-sync');
 		await client.connect();
 		const connection = await client.query(
 			'SELECT current_database() AS database, current_user AS role'
 		);
-		const databaseName = connection.rows[0]?.database;
-		const databaseIdentity = identityForDatabase(databaseName);
-		const testIdentity = testIdentityForDatabase(databaseName);
-		const expectedRole =
-			databaseConnection.mode === 'development'
-				? databaseConnection.expectedRole
-				: options.dryRun
-					? databaseIdentity?.roles.web
-					: databaseIdentity?.roles.importer;
-		if (!databaseIdentity || connection.rows[0]?.role !== expectedRole)
-			throw new Error('Refusing to sync against an unrecognized database.');
-		if (testIdentity) {
-			const marker = await client
-				.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)
-				.catch(() => ({ rows: [] }));
-			if (marker.rows[0]?.marker !== testIdentity.markerValue)
-				throw new Error('Refusing to sync a test database without its disposable safety marker.');
-		}
+		if (connection.rows[0]?.database !== databaseConnection.summary.database)
+			throw new Error('Refusing to sync against a different database than DB_DATABASE.');
 		let games;
 		const now = Date.now();
 		const cutoff = new Date(now - STEAM_METADATA_TTL_MS).toISOString();

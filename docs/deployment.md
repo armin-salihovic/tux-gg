@@ -1,12 +1,10 @@
 # Deployment
 
-## Database setup
+## Database account
 
-For a **new production installation**, configure the web, importer, and migrator role URLs plus a protected `PGADMIN_URL`, install Python dependencies, run `pnpm db:setup:production`, then apply the baseline with `pnpm db:migrate`. Setup uses the supplied role credentials, does not rotate passwords, and does not rewrite `.env`. Restore the verified games CSV with `pnpm db:restore:games -- <games.csv>` before starting the app.
+Configure one PostgreSQL account in the deployment environment with `DB_CONNECTION=pgsql`, `DB_HOST`, `DB_PORT`, `DB_DATABASE=vapourdb`, `DB_USERNAME`, and `DB_PASSWORD`. The same account is used by the web runtime and operational commands. Setup and migrations require `CREATE` on application schema `public` and Drizzle schema `drizzle`; setup also needs `CREATEDB` only when the target database is missing. Catalog restore requires `SELECT`, `INSERT`, and `UPDATE` on `public.games`.
 
-The baseline is intended for an empty schema. Never run local development setup or reset commands against production or staging. Production schema changes remain an explicit operator migration. See [database.md](database.md).
-
-Run migrations with `vapourdb_migrator`; the web process receives only `DATABASE_URL`. Keep `IMPORTER_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and `PGADMIN_URL` in a host-side secret file or secret manager. Local development instead uses one `DATABASE_URL` with the dedicated `vapourdb_dev` role.
+For a publicly exposed deployment, use an independently chosen non-superuser account with only the required privileges. The application does not require a role matrix or second maintenance URL. See [database setup](database.md).
 
 ## Application configuration
 
@@ -16,7 +14,7 @@ Steam OpenID does not use a client ID or secret. The realm is `PUBLIC_SITE_URL`,
 
 ## Docker Compose
 
-Copy `.env.production.example` to `.env`, fill in the secrets and database URLs, then run:
+Copy `.env.production.example` to `.env`, set the database fields and application secrets, then run:
 
 ```sh
 docker compose build
@@ -24,13 +22,12 @@ docker compose up -d
 docker compose ps
 ```
 
-The app listens on container port 3000 and checks `/healthz`, which also verifies database connectivity. Compose binds it to `127.0.0.1:3000` for a reverse proxy on the host. Terminate TLS at the proxy, forward the original host and protocol, and set `ORIGIN`, `PUBLIC_SITE_URL`, and `BETTER_AUTH_URL` to the public HTTPS origin. For a proxy in Docker, use a private Docker network instead of the host port mapping. Set the single `DATABASE_URL` to an address reachable from the app container: a database service name on a shared Docker network or the published host gateway. Compose passes only the web credential and public application settings to the app.
+The app listens on container port 3000 and checks `/healthz`, which also verifies database connectivity. Compose binds it to `127.0.0.1:3000` for a reverse proxy on the host. Terminate TLS at the proxy, forward the original host and protocol, and set `ORIGIN`, `PUBLIC_SITE_URL`, and `BETTER_AUTH_URL` to the public HTTPS origin. For a proxy in Docker, use a private Docker network instead of the host port mapping. `DB_HOST` must be reachable from the app container, such as a database service name on a shared Docker network or the published host gateway. A Windows-host app uses the Windows loopback host port.
 
 ## Operations
 
-- Run `pnpm db:backup:games` and confirm all verification steps pass before catalog maintenance.
-- Keep the archive, CSV, and manifest in a secured location outside Git. Before any operation touching accounts, sessions, devices, or reports, create and verify a separate full-database backup.
-- Use `pnpm steam:sync -- --dry-run` to preview stale metadata without Steam requests or database writes. Applied refreshes select at most 10 games by default, can be raised to 20, skip entries fetched in the last 30 days, and wait at least two seconds between requests. Add `--force` only for an intentional refresh.
+- Run `pnpm db:backup:games` and review its reported verification level before catalog maintenance.
+- Keep archive, CSV, and manifest files in a secured location outside Git. Before an operation touching accounts, sessions, devices, or reports, create and verify a separate full-database backup.
+- Use `pnpm steam:sync -- --dry-run` to preview stale metadata without database writes. Applied refreshes select at most 10 games by default, can be raised to 20, skip entries fetched in the last 30 days, and wait at least two seconds between requests. Add `--force` only for an intentional refresh.
 - Use `pnpm steam:discover -- --limit 1000` to preview a page of new Steam catalog entries; pass `--apply` to upsert new entries.
-- Keep `NATIVE_REPORT_OPERATOR_DATABASE_URL` outside the web container and use it only for `python scripts/moderate_native_reports.py` commands.
-- Keep database and authentication credentials in a host secret store or a permission-restricted environment file.
+- Keep the database password and authentication secrets in a host secret store or permission-restricted environment file.

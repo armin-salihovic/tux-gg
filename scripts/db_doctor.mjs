@@ -3,9 +3,8 @@
 import {
 	categorizeConnectionError,
 	createDatabaseClient,
-	databaseMode,
 	dockerPortSummary,
-	safeUrlSummary
+	resolveDatabaseUrl
 } from './database-connection.mjs';
 import { loadLocalEnv } from './games-catalog.mjs';
 
@@ -27,55 +26,54 @@ function printDockerPorts() {
 }
 
 function printWindowsChecks(port = '5432') {
-	console.log('Windows checks: docker ps --format "table {{.Names}}\t{{.Ports}}"');
+	console.log('Windows checks: docker ps --format "table {{.Names}}\\t{{.Ports}}"');
 	console.log(`  Test-NetConnection 127.0.0.1 -Port ${port}`);
 	console.log(
-		'  A Windows-host app must use the Docker published host port; container service names only work from a container network.'
+		'For a Windows-host app, DB_HOST must be 127.0.0.1 and DB_PORT must be the Docker published host port.'
 	);
 }
 
 async function main() {
-	const raw = process.env.DATABASE_URL;
-	const mode = databaseMode();
-	console.log(`Mode: ${mode}`);
-	if (!raw) {
-		console.error('DATABASE_URL is not configured.');
+	let connection;
+	try {
+		connection = resolveDatabaseUrl('doctor');
+	} catch (error) {
+		console.error(error.message);
 		printDockerPorts();
 		printWindowsChecks();
 		return 1;
 	}
-	let summary;
-	try {
-		summary = safeUrlSummary(raw);
-	} catch {
-		console.error('DATABASE_URL is not a valid PostgreSQL connection URL.');
+	const summary = connection.summary;
+	console.log('Mode: read-only');
+	console.log(
+		`DB_* target: host=${summary.host} port=${summary.port} database=${summary.database} username=${summary.username}`
+	);
+	if (summary.database !== 'vapourdb' && !connection.testIdentity) {
+		console.error(
+			'DB_DATABASE must be exactly vapourdb; no connection was opened to the selected database.'
+		);
+		printDockerPorts();
+		printWindowsChecks(summary.port);
 		return 1;
 	}
-	console.log(
-		`DATABASE_URL target: host=${summary.host} port=${summary.port} database=${summary.database} username=${summary.username}`
-	);
-	if (mode === 'development' && summary.username === 'vapourdb_web')
-		console.log(
-			'Configuration note: vapourdb_web is a restricted production role; local migrations require vapourdb_dev.'
-		);
-	if (
-		mode === 'development' &&
-		!['localhost', '127.0.0.1', '::1'].includes(summary.host.toLowerCase())
-	)
-		console.log('Configuration note: local write commands require a loopback host URL.');
-	const client = createDatabaseClient(raw, 'vapourdb-db-doctor');
+	const client = createDatabaseClient(connection, 'vapourdb-db-doctor');
 	try {
 		await client.connect();
 		const result = await client.query(
 			`SELECT current_database() AS database, current_user AS username,
 			        current_setting('server_version') AS server_version,
 			        inet_server_addr()::text AS server_address,
-			        has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_schema,
-			        r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication, r.rolbypassrls,
-			        d.datdba = r.oid AS owns_database,
-			        EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = r.oid) AS has_role_membership,
-		        CASE WHEN to_regclass('public.games') IS NULL THEN false ELSE has_table_privilege(current_user, to_regclass('public.games'), 'INSERT') END AS can_insert_games,
-		        CASE WHEN to_regclass('public.games') IS NULL THEN false ELSE has_table_privilege(current_user, to_regclass('public.games'), 'UPDATE') END AS can_update_games,
+			        has_database_privilege(current_user, current_database(), 'CREATE') AS can_create_database_objects,
+			        has_schema_privilege(current_user, 'public', 'USAGE') AS can_use_public,
+			        has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_public,
+			        to_regnamespace('drizzle') IS NOT NULL AS has_drizzle_schema,
+			        CASE WHEN to_regnamespace('drizzle') IS NULL
+			             THEN has_database_privilege(current_user, current_database(), 'CREATE')
+			             ELSE has_schema_privilege(current_user, 'drizzle', 'USAGE')
+			                  AND has_schema_privilege(current_user, 'drizzle', 'CREATE') END AS can_create_migration_history,
+			        CASE WHEN to_regclass('public.games') IS NULL THEN false ELSE has_table_privilege(current_user, 'public.games', 'SELECT') END AS can_read_games,
+			        CASE WHEN to_regclass('public.games') IS NULL THEN false ELSE has_table_privilege(current_user, 'public.games', 'INSERT') END AS can_insert_games,
+			        CASE WHEN to_regclass('public.games') IS NULL THEN false ELSE has_table_privilege(current_user, 'public.games', 'UPDATE') END AS can_update_games,
 			        to_regclass('public.games') IS NOT NULL AS has_games,
 			        to_regclass('public.user') IS NOT NULL AS has_user,
 			        to_regclass('public.account') IS NOT NULL AS has_account,
@@ -83,16 +81,14 @@ async function main() {
 			        to_regclass('public.verification') IS NOT NULL AS has_verification,
 			        to_regclass('public.native_reports') IS NOT NULL AS has_native_reports,
 			        to_regclass('public.user_devices') IS NOT NULL AS has_user_devices,
-			        to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS has_migration_history
-			 FROM pg_roles r CROSS JOIN pg_database d
-			 WHERE r.rolname = current_user AND d.datname = current_database()`
+			        to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS has_migration_history`
 		);
 		const row = result.rows[0];
 		console.log(
 			`Connected: database=${row.database} username=${row.username} PostgreSQL=${row.server_version} server_address=${row.server_address ?? 'unknown'}`
 		);
 		console.log(
-			`Privileges: schema_create=${row.can_create_schema} games_insert=${row.can_insert_games} games_update=${row.can_update_games}`
+			`Privileges: database_create=${row.can_create_database_objects} public_usage=${row.can_use_public} public_create=${row.can_create_public} drizzle_usage_create=${row.can_create_migration_history} games_select=${row.can_read_games} games_insert=${row.can_insert_games} games_update=${row.can_update_games}`
 		);
 		console.log('Tables:');
 		for (const [label, key] of [
@@ -106,50 +102,9 @@ async function main() {
 			['Drizzle migration history', 'has_migration_history']
 		])
 			console.log(`  ${label}: ${row[key] ? 'present' : 'missing'}`);
-		let localTargetOk = true;
-		if (mode === 'development') {
-			if (!['localhost', '127.0.0.1', '::1'].includes(summary.host.toLowerCase())) {
-				console.error(
-					'Local development writes are restricted to a loopback host; this URL points elsewhere.'
-				);
-				localTargetOk = false;
-			}
-			if (row.database !== 'vapourdb') {
-				console.error(
-					'Local write commands only select the vapourdb database; legacy and test databases are not migrated implicitly.'
-				);
-				localTargetOk = false;
-			}
-			if (row.username === 'vapourdb_web') {
-				console.error(
-					'vapourdb_web is a restricted production role. Keep it restricted and use a dedicated vapourdb_dev owner for local migrations.'
-				);
-				localTargetOk = false;
-			} else if (row.username !== 'vapourdb_dev') {
-				console.error('Local DATABASE_URL must use the dedicated vapourdb_dev role.');
-				localTargetOk = false;
-			}
-			if (
-				row.rolsuper ||
-				row.rolcreatedb ||
-				row.rolcreaterole ||
-				row.rolreplication ||
-				row.rolbypassrls ||
-				row.has_role_membership
-			) {
-				console.error(
-					'The local role has administrator attributes or memberships; use a restricted dedicated development role.'
-				);
-				localTargetOk = false;
-			}
-			if (row.username === 'vapourdb_dev' && (!row.owns_database || !row.can_create_schema)) {
-				console.error('vapourdb_dev must own vapourdb and be able to create objects in public.');
-				localTargetOk = false;
-			}
-		}
 		printDockerPorts();
 		printWindowsChecks(summary.port);
-		return localTargetOk ? 0 : 1;
+		return 0;
 	} catch (error) {
 		console.error(`${categorizeConnectionError(error)}.`);
 		printDockerPorts();

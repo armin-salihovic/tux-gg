@@ -18,8 +18,8 @@ Users can set one default device or delete a device. Only validated Linux PCs an
 
 The baseline schema contains `user_devices` and the optional `device_id` and `device_name_snapshot` references on `native_reports`. `source_verified_at` distinguishes devices created from validated Steam System Information from older records. Existing devices without this value remain visible but require reimport before they can be used for a new report.
 
-The web role receives CRUD access to a user's device records through account-scoped application queries and column-limited inserts on `native_reports`. It cannot update or delete reports or set moderation/publication fields. The web application never runs migrations or grants on a user request. See [database.md](database.md) for the clean baseline and controlled database setup.
+The web application, migrations, and database tools use the same configured PostgreSQL login. Account-scoped application queries enforce device ownership, and column-limited inserts protect moderation and publication fields on `native_reports`. Requests never run migrations or grants. See [database.md](database.md) for database setup.
 
 ## Tests
 
-Unit and browser checks cover strict parser cases, Windows rejection, reimport provenance, ownership, mandatory report devices, immutable snapshots, and moderation restrictions. PostgreSQL integration tests require the explicitly marked `vapourdb_test` database. Legacy `tuxgg_test` markers remain supported for existing test setups, but tests never run fixture cleanup against the normal development database.
+Unit and browser checks cover strict parser cases, Windows rejection, reimport provenance, ownership, mandatory report devices, immutable snapshots, and moderation restrictions. PostgreSQL integration tests require the explicitly marked `vapourdb_test` database, and test fixtures never run against the normal development database.

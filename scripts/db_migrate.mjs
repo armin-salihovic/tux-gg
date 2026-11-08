@@ -23,7 +23,7 @@ function sanitizeOutput(text, raw) {
 }
 
 async function showBlockingSessions(connection) {
-	const client = createDatabaseClient(connection.raw, 'vapourdb-migration-diagnostics');
+	const client = createDatabaseClient(connection, 'vapourdb-migration-diagnostics');
 	try {
 		await client.connect();
 		const result = await client.query(
@@ -60,7 +60,7 @@ async function main() {
 	} catch (error) {
 		console.error(`Migration preflight failed: ${error.category ?? error.message}`);
 		console.error(
-			'Check the Docker published host port, DATABASE_URL target, role password, and migration-role privileges.'
+			'Check the Docker published host port, DB_* target and password, plus CREATE on public and drizzle schemas.'
 		);
 		return 1;
 	}

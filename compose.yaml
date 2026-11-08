@@ -8,7 +8,12 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       ORIGIN: ${ORIGIN:-}
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to an address reachable from the app container}
+      DB_CONNECTION: ${DB_CONNECTION:?Set DB_CONNECTION=pgsql}
+      DB_HOST: ${DB_HOST:?Set DB_HOST to an address reachable from the app container}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_DATABASE: ${DB_DATABASE:?Set DB_DATABASE=vapourdb}
+      DB_USERNAME: ${DB_USERNAME:?Set DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-}
       STEAM_API_KEY: ${STEAM_API_KEY:-}

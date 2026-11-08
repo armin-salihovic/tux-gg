@@ -3,8 +3,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
+import os
+
+try:
+    from .db_config import database_settings
+except ImportError:
+    from db_config import database_settings
 
 EXPECTED_DATABASE = "vapourdb_test"
 MARKER_VALUE = "vapourdb_disposable_test_database_v1"
@@ -21,15 +26,14 @@ GAMES = (
 
 
 def main() -> int:
-    url = os.environ.get("TEST_DATABASE_URL")
-    if not url:
-        print("Set TEST_DATABASE_URL to the marked vapourdb_test database.", file=sys.stderr)
+    if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("VAPOURDB_TEST_DATABASE") != "1":
+        print("Fixture seeding is restricted to the explicitly marked CI test database.", file=sys.stderr)
         return 1
     try:
         import psycopg
         from psycopg.types.json import Json
 
-        with psycopg.connect(url, connect_timeout=5) as conn, conn.cursor() as cur:
+        with psycopg.connect(**database_settings(allow_test=True)) as conn, conn.cursor() as cur:
             cur.execute("SELECT current_database()")
             if cur.fetchone()[0] != EXPECTED_DATABASE:
                 raise RuntimeError("Refusing to seed fixtures outside vapourdb_test.")

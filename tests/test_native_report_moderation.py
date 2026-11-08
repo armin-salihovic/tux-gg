@@ -9,16 +9,16 @@ import psycopg
 import pytest
 
 from scripts.moderate_native_reports import list_pending, moderate_report, verify_operator_connection
+from scripts.db_config import database_settings
 
 
 @pytest.fixture
 def operator_connection():
-    url = os.environ.get("MIGRATION_DATABASE_URL")
-    if not url:
-        pytest.skip("MIGRATION_DATABASE_URL is not configured for the disposable database.")
-    if psycopg.conninfo.conninfo_to_dict(url).get("dbname") != "vapourdb_test":
+    if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("VAPOURDB_TEST_DATABASE") != "1":
+        pytest.skip("The marked disposable CI database is not configured.")
+    if os.environ.get("DB_DATABASE") != "vapourdb_test":
         pytest.fail("Native report moderation integration tests require vapourdb_test.")
-    conn = psycopg.connect(url)
+    conn = psycopg.connect(**database_settings(allow_test=True))
     conn.execute("BEGIN")
     try:
         verify_operator_connection(conn)

@@ -1,6 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { parseSteamSystemInfo } from '#lib/steam-system-info.js';
 import { canSubmitReports } from '#lib/server/authz.js';
@@ -15,15 +14,13 @@ import { insertNativeReportForDevice, SelectedDeviceNotFoundError } from './nati
 import { createUserDevice, deleteUserDevice, updateUserDevice } from './user-devices.js';
 
 const enabled = process.env.NATIVE_REPORT_INTEGRATION_TESTS === '1';
-const databaseUrl = process.env.DATABASE_URL;
-const migrationUrl = process.env.MIGRATION_DATABASE_URL;
-const operator = migrationUrl ? new Pool({ connectionString: migrationUrl }) : undefined;
+const testDatabase = process.env.DB_DATABASE;
 
 describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 	it('requires a verified owner device and keeps its report hardware snapshot immutable', async () => {
-		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'vapourdb_test') {
+		if (testDatabase !== 'vapourdb_test' || process.env.VAPOURDB_TEST_DATABASE !== '1') {
 			throw new Error(
-				'Native report integration tests require DATABASE_URL to target vapourdb_test.'
+				'Native report integration tests require the explicitly marked vapourdb_test database.'
 			);
 		}
 		const pool = getPool();
@@ -33,7 +30,7 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 				'Native report integration tests refused a database other than vapourdb_test.'
 			);
 		}
-		expect(identity.rows[0]?.current_user).toBe('vapourdb_web');
+		expect(identity.rows[0]?.current_user).toBe(process.env.DB_USERNAME);
 		const marker = await pool.query(
 			' SELECT marker FROM public.vapourdb_test_safety_marker WHERE id = 1'
 		);
@@ -198,40 +195,18 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 					.where(eq(nativeReports.id, reportId))
 			)[0]
 		).toEqual({ deviceId: null, deviceName: 'Main Gaming PC', gpu: 'AMD Radeon RX 9070 XT' });
-
-		await expect(
-			pool.query(
-				'INSERT INTO public.native_reports (id, app_id, author_id, verdict, platform, content, moderation_state) ' +
-					"VALUES ($1, '440', $2, 'yes', 'linux_desktop', 'Attempt to set moderation.', 'published')",
-				[randomUUID(), userId]
-			)
-		).rejects.toMatchObject({ code: '42501' });
-		await expect(
-			pool.query(
-				'INSERT INTO public.native_reports (id, app_id, author_id, verdict, platform, content, published_at) ' +
-					"VALUES ($1, '440', $2, 'yes', 'linux_desktop', 'Attempt to publish.', now())",
-				[randomUUID(), userId]
-			)
-		).rejects.toMatchObject({ code: '42501' });
-		await expect(
-			pool.query('UPDATE public.native_reports SET moderation_state = $1 WHERE id = $2', [
-				'published',
-				reportId
-			])
-		).rejects.toMatchObject({ code: '42501' });
-		await expect(
-			pool.query('DELETE FROM public.native_reports WHERE id = $1', [reportId])
-		).rejects.toMatchObject({ code: '42501' });
 	});
 
 	it('recalculates public tiers as reports move through moderation states', async () => {
-		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'vapourdb_test') {
-			throw new Error('Scoring integration tests require DATABASE_URL to target vapourdb_test.');
+		if (testDatabase !== 'vapourdb_test' || process.env.VAPOURDB_TEST_DATABASE !== '1') {
+			throw new Error(
+				'Scoring integration tests require the explicitly marked vapourdb_test database.'
+			);
 		}
-		if (!operator) throw new Error('Scoring integration tests require MIGRATION_DATABASE_URL.');
+		const operator = getPool();
 		const identity = await operator.query('SELECT current_database(), current_user');
 		expect(identity.rows[0]?.current_database).toBe('vapourdb_test');
-		expect(identity.rows[0]?.current_user).toBe('vapourdb_migrator');
+		expect(identity.rows[0]?.current_user).toBe(process.env.DB_USERNAME);
 		const appId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 		const userId = `score-${randomUUID()}`;
 		const reportIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
@@ -283,7 +258,6 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 	});
 
 	afterAll(async () => {
-		await operator?.end();
 		await closeDatabase();
 	});
 });

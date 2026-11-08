@@ -2,16 +2,14 @@ import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { Pool } from 'pg';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { resolveDatabaseUrl } from '../scripts/database-connection.mjs';
 
-const webDatabaseUrl = process.env.DATABASE_URL;
-const operatorDatabaseUrl = process.env.MIGRATION_DATABASE_URL;
-const webDatabaseName = webDatabaseUrl ? new URL(webDatabaseUrl).pathname.slice(1) : '';
-const operatorDatabaseName = operatorDatabaseUrl
-	? new URL(operatorDatabaseUrl).pathname.slice(1)
-	: '';
+const databaseConnection =
+	process.env.DB_CONNECTION === 'pgsql' ? resolveDatabaseUrl('steamRead') : undefined;
+const webDatabaseName = databaseConnection?.summary.database ?? '';
 
 test.skip(
-	webDatabaseName !== 'vapourdb_test' || operatorDatabaseName !== 'vapourdb_test',
+	webDatabaseName !== 'vapourdb_test' || process.env.VAPOURDB_TEST_DATABASE !== '1',
 	'Native report browser journey requires the disposable vapourdb_test database.'
 );
 
@@ -30,12 +28,12 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 	browser,
 	baseURL
 }) => {
-	if (!webDatabaseUrl || !operatorDatabaseUrl) throw new Error('Test database URLs are missing.');
+	if (!databaseConnection) throw new Error('The marked test database configuration is missing.');
 	const secret = process.env.BETTER_AUTH_SECRET;
 	if (!secret)
 		throw new Error('A CI-only Better Auth secret is required for the simulated session.');
 
-	const web = new Pool({ connectionString: webDatabaseUrl });
+	const web = new Pool(databaseConnection.options);
 	try {
 		const identity = await web.query('SELECT current_database(), current_user');
 		expect(identity.rows[0]?.current_database).toBe('vapourdb_test');
@@ -345,7 +343,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			{
 				cwd: process.cwd(),
 				encoding: 'utf8',
-				env: { ...process.env, NATIVE_REPORT_OPERATOR_DATABASE_URL: operatorDatabaseUrl }
+				env: { ...process.env }
 			}
 		);
 		expect(output).toContain('set to published');

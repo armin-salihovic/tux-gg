@@ -4,53 +4,54 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
 const secret = 'doctor-test-secret-must-not-leak';
-function runDoctor(url) {
+function runDoctor(database, port, overrides = {}) {
 	return spawnSync(process.execPath, ['scripts/db_doctor.mjs'], {
 		encoding: 'utf8',
 		timeout: 7000,
 		windowsHide: true,
 		env: {
 			...process.env,
-			DATABASE_URL: url,
-			VAPOURDB_DATABASE_MODE: 'development',
-			VAPOURDB_DOCTOR_SKIP_DOCKER: '1'
+			DB_CONNECTION: 'pgsql',
+			DB_HOST: '127.0.0.1',
+			DB_PORT: String(port),
+			DB_DATABASE: database,
+			DB_USERNAME: 'postgres',
+			DB_PASSWORD: secret,
+			VAPOURDB_DOCTOR_SKIP_DOCKER: '1',
+			...overrides
 		}
 	});
 }
 
-function assertSafeFailure(result, expected, hiddenSecret) {
+function assertSafeFailure(result, expected) {
 	const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
 	assert.equal(result.status, 1, 'invalid database configuration must fail');
 	assert.match(output, expected);
-	if (hiddenSecret) assert.doesNotMatch(output, new RegExp(hiddenSecret));
+	assert.doesNotMatch(output, new RegExp(secret));
 	assert.doesNotMatch(output, /postgres(?:ql)?:\/\/[^\s]+/i);
 	return output;
 }
 
-const unreachable = runDoctor(`postgresql://vapourdb_dev:${secret}@127.0.0.1:1/vapourdb`);
-const unreachableOutput = assertSafeFailure(unreachable, /TCP connection failed/, secret);
+const unreachableOutput = assertSafeFailure(runDoctor('vapourdb', 1), /TCP connection failed/);
 assert.match(unreachableOutput, /host=127\.0\.0\.1 port=1/);
 assert.match(unreachableOutput, /Test-NetConnection 127\.0\.0\.1 -Port 1/);
+assertSafeFailure(runDoctor('tuxgg', 5432), /DB_DATABASE must be exactly vapourdb/);
 
-if (process.env.DATABASE_URL) {
-	const configured = new URL(process.env.DATABASE_URL);
-	const badPassword = new URL(configured);
-	badPassword.password = 'doctor-wrong-password';
-	assertSafeFailure(
-		runDoctor(badPassword.toString()),
-		/PostgreSQL authentication failed/,
-		'doctor-wrong-password'
+if (process.env.GITHUB_ACTIONS === 'true' && process.env.DB_DATABASE === 'vapourdb') {
+	const wrongPassword = 'doctor-wrong-password-must-not-leak';
+	const authOutput = assertSafeFailure(
+		runDoctor('vapourdb', Number(process.env.DB_PORT || 5432), { DB_PASSWORD: wrongPassword }),
+		/PostgreSQL authentication failed/
 	);
-
-	const missingDatabase = new URL(configured);
-	missingDatabase.pathname = '/vapourdb_doctor_missing';
+	assert.doesNotMatch(authOutput, new RegExp(wrongPassword));
 	assertSafeFailure(
-		runDoctor(missingDatabase.toString()),
-		/PostgreSQL database does not exist/,
-		configured.password
+		runDoctor('vapourdb', Number(process.env.DB_PORT || 5432), {
+			DB_USERNAME: 'doctor-user-that-does-not-exist'
+		}),
+		/PostgreSQL authentication failed/
 	);
 }
 
 console.log(
-	'Database doctor reports unreachable ports, wrong credentials, and missing databases without leaking URLs.'
+	'Database doctor reports unreachable ports, rejects legacy targets, and redacts invalid credentials.'
 );

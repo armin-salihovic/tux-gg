@@ -1,4 +1,11 @@
-import { DATABASE_URL } from '$app/env/private';
+import {
+	DB_CONNECTION,
+	DB_DATABASE,
+	DB_HOST,
+	DB_PASSWORD,
+	DB_PORT,
+	DB_USERNAME
+} from '$app/env/private';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '#lib/server/db/schema.js';
@@ -7,11 +14,23 @@ let pool: Pool | undefined;
 let database: NodePgDatabase<typeof schema> | undefined;
 
 export function getPool(): Pool {
-	if (!DATABASE_URL) {
-		throw new Error('Database is not configured. Set DATABASE_URL in the private environment.');
+	if (
+		DB_CONNECTION?.toLowerCase() !== 'pgsql' ||
+		!DB_HOST ||
+		!DB_PORT ||
+		!DB_DATABASE ||
+		!DB_USERNAME
+	) {
+		throw new Error(
+			'Database is not configured. Set DB_CONNECTION=pgsql and the DB_* fields in .env.'
+		);
 	}
 	pool ??= new Pool({
-		connectionString: DATABASE_URL,
+		host: DB_HOST,
+		port: Number(DB_PORT),
+		database: DB_DATABASE,
+		user: DB_USERNAME,
+		password: DB_PASSWORD ?? '',
 		max: 10,
 		idleTimeoutMillis: 30_000,
 		connectionTimeoutMillis: 5_000,

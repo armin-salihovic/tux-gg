@@ -8,7 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
+import { testIdentityForDatabase } from './database-identifiers.mjs';
+import { resolveDatabaseUrl } from './database-connection.mjs';
 import { backupNaming } from './games-backup-naming.mjs';
 import { resolveBackupDirectory } from './backup-directory.mjs';
 
@@ -360,20 +361,8 @@ async function writePassfile(filePath, connections, container) {
 
 function safeDiagnostic(value) {
 	let diagnostic = value;
-	for (const variable of [
-		'GAMES_BACKUP_DATABASE_URL',
-		'DATABASE_URL',
-		'GAMES_BACKUP_VERIFY_ADMIN_URL',
-		'PGADMIN_URL'
-	]) {
-		const connection = process.env[variable];
-		if (!connection) continue;
-		diagnostic = diagnostic.replaceAll(connection, '<redacted PostgreSQL connection>');
-		try {
-			const password = decodeURIComponent(new URL(connection).password);
-			if (password) diagnostic = diagnostic.replaceAll(password, '<redacted>');
-		} catch {}
-	}
+	if (process.env.DB_PASSWORD)
+		diagnostic = diagnostic.replaceAll(process.env.DB_PASSWORD, '<redacted>');
 	return diagnostic
 		.replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, '<redacted PostgreSQL connection>')
 		.slice(-3000)
@@ -489,9 +478,9 @@ async function getSourceSamples(source, ids) {
 	return result.rows;
 }
 
-async function compareRestoredData(adminUrl, database, expectedIds, sourceSamples) {
+async function compareRestoredData(sourceUrl, database, expectedIds, sourceSamples) {
 	const client = new pg.Client({
-		connectionString: databaseUrlFor(database, adminUrl),
+		connectionString: databaseUrlFor(database, sourceUrl),
 		connectionTimeoutMillis: 10000
 	});
 	await client.connect();
@@ -563,7 +552,7 @@ async function sha256(filePath) {
 	return hash.digest('hex');
 }
 
-async function verifyDatabaseIdentity(client, sourceHost) {
+async function verifyDatabaseIdentity(client) {
 	const result = await client.query(
 		`SELECT current_database() AS database, current_user AS role,
 		        has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read,
@@ -575,20 +564,9 @@ async function verifyDatabaseIdentity(client, sourceHost) {
 		 WHERE n.nspname = 'public' AND c.relname = 'games' AND c.relkind IN ('r', 'p')`
 	);
 	const identity = result.rows[0];
-	const databaseIdentity = identityForDatabase(identity?.database);
 	const testIdentity = testIdentityForDatabase(identity?.database);
-	const expectedIdentity = databaseIdentity ?? testIdentity;
-	const localDeveloper = Boolean(
-		identity && identity.database === 'vapourdb' && identity.role === 'vapourdb_dev'
-	);
-	if (
-		!identity ||
-		!expectedIdentity ||
-		(!Object.values(expectedIdentity.roles).includes(identity.role) && !localDeveloper)
-	)
-		throw new Error(
-			'The source must use a VapourDB or legacy TuxGG application role and database.'
-		);
+	if (!identity || (identity.database !== 'vapourdb' && !testIdentity))
+		throw new Error('The source must be vapourdb or a marked vapourdb_test database.');
 	if (testIdentity) {
 		const marker = await client
 			.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)
@@ -596,16 +574,8 @@ async function verifyDatabaseIdentity(client, sourceHost) {
 		if (marker.rows[0]?.marker !== testIdentity.markerValue)
 			throw new Error('Refusing a test-database backup without its disposable safety marker.');
 	}
-	if (!identity.can_read) throw new Error('DATABASE_URL must have SELECT access to public.games.');
-	if (
-		localDeveloper &&
-		(!['localhost', '127.0.0.1', '::1'].includes(sourceHost.toLowerCase()) ||
-			identity.is_superuser ||
-			identity.can_bypass_rls)
-	)
-		throw new Error(
-			'vapourdb_dev backup access requires a loopback URL and a non-administrator role.'
-		);
+	if (!identity.can_read)
+		throw new Error('The configured DB_USERNAME needs SELECT on public.games.');
 	if (identity.row_security && !identity.is_superuser && !identity.can_bypass_rls) {
 		throw new Error(
 			'Row-level security is enabled on public.games; full-table export cannot be guaranteed with this role.'
@@ -614,14 +584,14 @@ async function verifyDatabaseIdentity(client, sourceHost) {
 	return identity;
 }
 
-async function verifyAdminIdentity(client) {
+async function verifyMaintenanceIdentity(client) {
 	const result = await client.query(
 		`SELECT current_database() AS database,
 		        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND rolcreatedb) AS can_create_database`
 	);
 	if (result.rows[0].database !== 'postgres' || !result.rows[0].can_create_database) {
 		throw new Error(
-			'PGADMIN_URL must connect to the postgres maintenance database with permission to create a disposable database.'
+			'The configured DB_USERNAME must connect to postgres and have CREATEDB for full archive restore verification.'
 		);
 	}
 }
@@ -629,14 +599,8 @@ async function verifyAdminIdentity(client) {
 async function run() {
 	loadLocalEnv();
 	FAILURE.stage = 'connection setup';
-	const sourceUrl = parseDatabaseUrl(
-		process.env.GAMES_BACKUP_DATABASE_URL || process.env.DATABASE_URL,
-		'GAMES_BACKUP_DATABASE_URL or DATABASE_URL'
-	);
-	const adminUrl = parseDatabaseUrl(
-		process.env.GAMES_BACKUP_VERIFY_ADMIN_URL || process.env.PGADMIN_URL,
-		'GAMES_BACKUP_VERIFY_ADMIN_URL or PGADMIN_URL'
-	);
+	const databaseConnection = resolveDatabaseUrl('backup');
+	const sourceUrl = parseDatabaseUrl(databaseConnection.raw, 'DB_*');
 	const backupDir = await makeBackupDirectory();
 	const dateStamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
 	const naming = backupNaming(sourceUrl.database, dateStamp);
@@ -664,14 +628,14 @@ async function run() {
 	const partialDump = path.join(workDir, `${naming.brand}-games-${dateStamp}.dump.partial`);
 	const verifyDb = `vapourdb_games_verify_${dateStamp}_${randomBytes(4).toString('hex')}`;
 	let source;
-	let admin;
+	let maintenance;
 	let createdVerifyDb = false;
 	let publishedFiles = [];
 	let resultSummary;
 
 	try {
 		await mkdir(workDir, { mode: 0o700 });
-		await writePassfile(passFile, [sourceUrl, adminUrl], engine.kind === 'docker');
+		await writePassfile(passFile, [sourceUrl], engine.kind === 'docker');
 		FAILURE.stage = 'source database validation';
 		source = new pg.Client({
 			connectionString: sourceUrl.url.toString(),
@@ -681,7 +645,7 @@ async function run() {
 		await source.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
 		await source.query("SET LOCAL TIME ZONE 'UTC'");
 		await source.query('SET LOCAL row_security = off');
-		const sourceIdentity = await verifyDatabaseIdentity(source, sourceUrl.host);
+		const sourceIdentity = await verifyDatabaseIdentity(source);
 		const counts = await source.query(
 			'SELECT count(*)::bigint AS row_count, count(DISTINCT app_id)::bigint AS unique_app_ids FROM public.games'
 		);
@@ -718,47 +682,76 @@ async function run() {
 			engine,
 			'pg_restore',
 			['--list', '--no-password', partialDump],
-			adminUrl,
+			sourceUrl,
 			passFile
 		);
 		const sourceSamples = await getSourceSamples(source, [...appIds]);
 
 		FAILURE.stage = 'disposable restore verification';
-		admin = new pg.Client({
-			connectionString: adminUrl.url.toString(),
-			connectionTimeoutMillis: 10000
-		});
-		await admin.connect();
-		await verifyAdminIdentity(admin);
-		await admin.query(`CREATE DATABASE "${verifyDb}"`);
-		createdVerifyDb = true;
-		const disposableUrl = connectionForDatabase(adminUrl, verifyDb);
-		const disposable = new pg.Client({
-			connectionString: disposableUrl.url.toString(),
-			connectionTimeoutMillis: 10000
-		});
-		await disposable.connect();
+		let restoreResult = null;
 		try {
-			await disposable.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
-		} finally {
-			await disposable.end();
+			maintenance = new pg.Client({
+				...databaseConnection.options,
+				database: 'postgres',
+				connectionTimeoutMillis: 5000
+			});
+			await maintenance.connect();
+			await verifyMaintenanceIdentity(maintenance);
+			const collision = await maintenance.query('SELECT 1 FROM pg_database WHERE datname = $1', [
+				verifyDb
+			]);
+			if (collision.rowCount)
+				throw Object.assign(new Error('Generated verification database name already exists.'), {
+					code: 'VDBCOLLISION'
+				});
+			await maintenance.query(`CREATE DATABASE "${verifyDb}"`);
+			createdVerifyDb = true;
+			const disposableUrl = connectionForDatabase(sourceUrl, verifyDb);
+			const disposable = new pg.Client({
+				...databaseConnection.options,
+				database: verifyDb,
+				connectionTimeoutMillis: 10000
+			});
+			await disposable.connect();
+			try {
+				const disposableIdentity = await disposable.query(
+					'SELECT current_database(), current_user'
+				);
+				if (
+					disposableIdentity.rows[0]?.current_database !== verifyDb ||
+					disposableIdentity.rows[0]?.current_user !== sourceUrl.user
+				)
+					throw new Error('Disposable archive verification database identity mismatch.');
+				await disposable.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+			} finally {
+				await disposable.end();
+			}
+			const restoreArgs = [
+				'--exit-on-error',
+				'--no-owner',
+				'--no-acl',
+				`--dbname=${verifyDb}`,
+				partialDump
+			];
+			await runPgTool(engine, 'pg_restore', restoreArgs, disposableUrl, passFile);
+			restoreResult = await compareRestoredData(sourceUrl, verifyDb, appIds, sourceSamples);
+		} catch (error) {
+			if (error?.code === 'VDBCOLLISION' || createdVerifyDb) throw error;
+			console.log(
+				'The configured login cannot create a disposable verification database; archive restore verification is reduced to archive readability, CSV checks, and checksums.'
+			);
+			await maintenance?.end().catch(() => {});
+			maintenance = undefined;
 		}
-		const restoreArgs = [
-			'--exit-on-error',
-			'--no-owner',
-			'--no-acl',
-			`--dbname=${verifyDb}`,
-			partialDump
-		];
-		await runPgTool(engine, 'pg_restore', restoreArgs, disposableUrl, passFile);
-		const restoreResult = await compareRestoredData(adminUrl, verifyDb, appIds, sourceSamples);
 		await source.query('COMMIT');
 		await source.end();
 		source = undefined;
-		await admin.query(`DROP DATABASE "${verifyDb}" WITH (FORCE)`);
-		createdVerifyDb = false;
-		await admin.end();
-		admin = undefined;
+		if (maintenance && createdVerifyDb) {
+			await maintenance.query(`DROP DATABASE "${verifyDb}"`);
+			createdVerifyDb = false;
+			await maintenance.end();
+			maintenance = undefined;
+		}
 
 		FAILURE.stage = 'publishing verified backup';
 		await rename(partialCsv, csvPath);
@@ -777,8 +770,9 @@ async function run() {
 			database: sourceIdentity.database,
 			originalCount,
 			csvCount,
-			archiveRestoredRows: restoreResult.rows,
-			representativeRecordsCompared: restoreResult.representativeRecords,
+			verificationLevel: restoreResult ? 'full-disposable-restore' : 'archive-readable',
+			archiveRestoredRows: restoreResult?.rows ?? null,
+			representativeRecordsCompared: restoreResult?.representativeRecords ?? null,
 			csvFile: path.basename(csvPath),
 			csvSha256: csvHash,
 			archiveFile: path.basename(archivePath),
@@ -811,10 +805,10 @@ async function run() {
 			await source.query('ROLLBACK').catch(() => {});
 			await source.end().catch(() => {});
 		}
-		if (admin && createdVerifyDb) {
-			await admin.query(`DROP DATABASE "${verifyDb}" WITH (FORCE)`).catch(() => {});
+		if (maintenance && createdVerifyDb) {
+			await maintenance.query(`DROP DATABASE "${verifyDb}"`).catch(() => {});
 		}
-		if (admin) await admin.end().catch(() => {});
+		if (maintenance) await maintenance.end().catch(() => {});
 		await rm(workDir, { recursive: true, force: true }).catch(() => {});
 	}
 
@@ -822,12 +816,18 @@ async function run() {
 	console.log(`Source database: ${resultSummary.sourceDatabase}`);
 	console.log(`Original game records: ${resultSummary.originalCount}`);
 	console.log(`CSV records verified: ${resultSummary.csvCount}`);
-	console.log(`AppIDs preserved and unique: ${resultSummary.restoreResult.appIds}`);
+	console.log(`AppIDs preserved and unique: ${resultSummary.csvCount}`);
 	console.log('Custom archive readability: passed');
-	console.log(
-		`Disposable database restore: passed (${resultSummary.restoreResult.rows} rows; ${resultSummary.restoreResult.representativeRecords} representative records compared)`
-	);
-	console.log('Representative JSON metadata and timestamps: preserved');
+	if (resultSummary.restoreResult) {
+		console.log(
+			`Disposable database restore: passed (${resultSummary.restoreResult.rows} rows; ${resultSummary.restoreResult.representativeRecords} representative records compared)`
+		);
+		console.log('Representative JSON metadata and timestamps: preserved');
+	} else {
+		console.log(
+			'Full archive restore verification: unavailable; reduced verification level recorded in the manifest.'
+		);
+	}
 	console.log(`CSV: ${resultSummary.csvPath} (${resultSummary.csvInfo.size} bytes)`);
 	console.log(`CSV SHA-256: ${resultSummary.csvHash}`);
 	console.log(`Archive: ${resultSummary.archivePath} (${resultSummary.archiveInfo.size} bytes)`);
