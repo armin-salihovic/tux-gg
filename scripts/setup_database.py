@@ -491,15 +491,6 @@ def run(grant_only: bool, production: bool = False, bootstrap: bool = False) -> 
             raise RuntimeError("db:grant is for production or multi-role installations, not single-role local development.")
         target_url = _local_database_url()
         if bootstrap:
-            try:
-                _verify_local_database(target_url)
-                print("Local vapourdb setup is already complete. No bootstrap changes were made.")
-                return
-            except Exception as exc:
-                if getattr(exc, "sqlstate", None) not in ("28P01", "28000", "3D000"):
-                    raise RuntimeError(
-                        "Could not reach the local database. Run pnpm db:doctor before attempting bootstrap."
-                    ) from None
             _bootstrap_local_database(target_url)
         try:
             _verify_local_database(target_url)
