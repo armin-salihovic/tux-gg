@@ -582,7 +582,11 @@ def main() -> int:
     parser.add_argument("--grant-only", action="store_true", help="refresh least-privilege grants after migrations")
     parser.add_argument("--production", action="store_true", help="run advanced multi-role production provisioning")
     parser.add_argument("--bootstrap", action="store_true", help="create only a missing local role/database after explicit admin input")
-    args = parser.parse_args()
+    cli_args = sys.argv[1:]
+    # pnpm forwards the explicit separator in `pnpm db:setup -- --bootstrap`.
+    if cli_args[:1] == ["--"]:
+        cli_args = cli_args[1:]
+    args = parser.parse_args(cli_args)
     try:
         if args.bootstrap and args.production:
             raise RuntimeError("Local --bootstrap cannot be combined with --production.")
