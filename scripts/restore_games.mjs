@@ -2,6 +2,7 @@
 
 import path from 'node:path';
 import pg from 'pg';
+import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 import {
 	GAME_COLUMNS,
 	loadLocalEnv,
@@ -25,22 +26,39 @@ if (!connectionString) {
 let client;
 try {
 	const games = parseGamesCsv(path.resolve(csvPath));
-	client = new pg.Client({ connectionString, application_name: 'tuxgg-games-restore' });
+	client = new pg.Client({ connectionString, application_name: 'vapourdb-games-restore' });
 	await client.connect();
 	const identity = await client.query(
-		`SELECT current_database() AS database,
+		`SELECT current_database() AS database, current_user AS role,
 		        has_table_privilege(current_user, 'public.games', 'INSERT') AS can_insert,
 		        has_table_privilege(current_user, 'public.games', 'UPDATE') AS can_update`
 	);
 	const databaseName = identity.rows[0]?.database;
-	const restoreVerifyDatabase = /^tuxgg_restore_verify_[a-f0-9]{12}$/.test(databaseName ?? '');
-	if (!['tuxgg', 'tuxgg_test'].includes(databaseName) && !restoreVerifyDatabase)
+	const appIdentity = identityForDatabase(databaseName);
+	const testIdentity = testIdentityForDatabase(databaseName);
+	const restoreVerifyPrefix = databaseName?.match(
+		/^(vapourdb|tuxgg)_restore_verify_[a-f0-9]{12}$/
+	)?.[1];
+	const restoreVerifyIdentity = restoreVerifyPrefix
+		? identityForDatabase(restoreVerifyPrefix)
+		: null;
+	if (!appIdentity && !testIdentity && !restoreVerifyIdentity)
 		throw new Error('Refusing to import games into an unrecognized database.');
-	if (restoreVerifyDatabase) {
+	const expectedIdentity = appIdentity ?? testIdentity ?? restoreVerifyIdentity;
+	if (identity.rows[0]?.role !== expectedIdentity.roles.importer)
+		throw new Error('IMPORTER_DATABASE_URL must use the matching catalog-writer role.');
+	if (testIdentity) {
 		const marker = await client
-			.query('SELECT marker FROM public.tuxgg_restore_verify_marker WHERE id = 1')
+			.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)
 			.catch(() => ({ rows: [] }));
-		if (marker.rows[0]?.marker !== 'tuxgg_games_csv_restore_verification_v1')
+		if (marker.rows[0]?.marker !== testIdentity.markerValue)
+			throw new Error('Refusing to import into an unmarked disposable test database.');
+	}
+	if (restoreVerifyIdentity) {
+		const marker = await client
+			.query(`SELECT marker FROM public.${restoreVerifyPrefix}_restore_verify_marker WHERE id = 1`)
+			.catch(() => ({ rows: [] }));
+		if (marker.rows[0]?.marker !== `${restoreVerifyPrefix}_games_csv_restore_verification_v1`)
 			throw new Error('Refusing to import into an unmarked CSV restore verification database.');
 	}
 	if (!identity.rows[0].can_insert || !identity.rows[0].can_update)
@@ -65,7 +83,7 @@ try {
 			   slug = COALESCE(NULLIF(EXCLUDED.slug, ''), public.games.slug),
 			   artwork_url = COALESCE(NULLIF(EXCLUDED.artwork_url, ''), public.games.artwork_url),
 			   header_image_url = COALESCE(NULLIF(EXCLUDED.header_image_url, ''), public.games.header_image_url),
-			   metadata = pg_temp.tuxgg_merge_metadata(public.games.metadata, EXCLUDED.metadata),
+			   metadata = pg_temp.vapourdb_merge_metadata(public.games.metadata, EXCLUDED.metadata),
 			   created_at = LEAST(public.games.created_at, EXCLUDED.created_at),
 			   updated_at = GREATEST(public.games.updated_at, EXCLUDED.updated_at)`,
 			values

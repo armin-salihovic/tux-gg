@@ -3,6 +3,30 @@ import { expect, test } from '@playwright/test';
 test('homepage renders search and security headers without a database', async ({ page }) => {
 	const response = await page.goto('/');
 	expect(response?.status()).toBe(200);
+	await expect(page).toHaveTitle('Steam Games for Linux & Steam Deck | VapourDB');
+	await expect(page.getByRole('link', { name: 'VapourDB home' })).toBeVisible();
+	await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute(
+		'content',
+		'VapourDB'
+	);
+	await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute(
+		'content',
+		'VapourDB Linux and Steam Deck compatibility'
+	);
+	await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute(
+		'content',
+		'http://localhost:5173/og-default.png'
+	);
+	const favicon = await page.request.get('/favicon.svg');
+	expect(favicon.status()).toBe(200);
+	const faviconSource = await favicon.text();
+	expect(faviconSource).toContain('<title id="title">VapourDB</title>');
+	expect(faviconSource).toContain('M15 18l17 31 17-31');
+	const socialImage = await page.request.get('/og-default.png');
+	expect(socialImage.status()).toBe(200);
+	const socialImageBytes = await socialImage.body();
+	expect(socialImageBytes.readUInt32BE(16)).toBe(1200);
+	expect(socialImageBytes.readUInt32BE(20)).toBe(630);
 	expect(await response?.headerValue('x-content-type-options')).toBe('nosniff');
 	expect(await response?.headerValue('x-frame-options')).toBe('DENY');
 	await expect(page.getByRole('heading', { name: /know before you launch/i })).toBeVisible();
@@ -34,10 +58,11 @@ test('login page offers Steam-only sign-in and starts a mocked Steam handoff', a
 	});
 	await page.goto('/login');
 	await page.waitForLoadState('networkidle');
+	await expect(page).toHaveTitle('Sign in | VapourDB');
 	await expect(page.getByRole('heading', { name: 'Sign in through Steam' })).toBeVisible();
 	await expect(
 		page.getByText(
-			'Sign in securely with your Steam account to create or access your TuxGG profile.'
+			'Sign in securely with your Steam account to create or access your VapourDB profile.'
 		)
 	).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Sign in through Steam' })).toBeVisible();
@@ -114,7 +139,19 @@ test('login page distinguishes a network failure from an HTTP error', async ({ p
 
 test('public policy pages are available and robots lists the sitemap', async ({ page }) => {
 	await page.goto('/methodology');
-	await expect(page.getByRole('heading', { name: 'How TuxGG reports work' })).toBeVisible();
+	await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute(
+		'content',
+		'VapourDB'
+	);
+	await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+		'content',
+		'http://localhost:5173/og-default.png'
+	);
+	await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
+		'content',
+		'summary_large_image'
+	);
+	await expect(page.getByRole('heading', { name: 'How VapourDB reports work' })).toBeVisible();
 	const robots = await page.request.get('/robots.txt');
 	expect(robots.status()).toBe(200);
 	expect(await robots.text()).toContain('Sitemap: http://localhost:5173/sitemap.xml');
@@ -296,7 +333,7 @@ test('Steam artwork uses one alternate after a 404 without shifting the hero lay
 	expect(requested[1]).toContain('/440/capsule_616x353.jpg');
 });
 
-test('Steam artwork stops after a network failure and shows the TuxGG fallback', async ({
+test('Steam artwork stops after a network failure and shows the VapourDB fallback', async ({
 	page
 }) => {
 	const requested: string[] = [];

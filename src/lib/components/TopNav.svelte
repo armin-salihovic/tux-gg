@@ -18,13 +18,13 @@
 
 <header class="sticky top-0 z-40 border-b border-white/5 bg-base/90 backdrop-blur-xl">
 	<div class="container-shell flex h-[4.5rem] items-center justify-between gap-6">
-		<a class="flex items-center gap-3 no-underline" href="/" aria-label="TuxGG home">
+		<a class="flex items-center gap-3 no-underline" href="/" aria-label="VapourDB home">
 			<span
 				class="grid size-9 place-items-center rounded-xl border border-mint/25 bg-mint/10 text-sm font-black text-mint"
-				>T</span
+				>V</span
 			>
 			<span class="text-lg font-extrabold tracking-tight text-white"
-				>Tux<span class="text-mint">GG</span></span
+				>Vapour<span class="text-mint">DB</span></span
 			>
 		</a>
 

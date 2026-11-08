@@ -8,32 +8,32 @@
 </script>
 
 <svelte:head>
-	<title>Steam Games for Linux & Steam Deck | TuxGG</title>
+	<title>Steam Games for Linux & Steam Deck | VapourDB</title>
 	<meta
 		name="description"
 		content="Browse Steam games with player-submitted Linux and Steam Deck compatibility reports."
 	/>
 	<link rel="canonical" href={data.canonical} />
 	<meta property="og:type" content="website" />
-	<meta property="og:title" content="Steam Games for Linux & Steam Deck | TuxGG" />
+	<meta property="og:title" content="Steam Games for Linux & Steam Deck | VapourDB" />
 	<meta
 		property="og:description"
 		content="Search the Steam game catalog and read player-submitted compatibility reports."
 	/>
 	<meta property="og:url" content={data.canonical} />
 	<meta property="og:image" content={data.ogImage} />
-	<meta property="og:image:alt" content="TuxGG Linux and Steam Deck compatibility" />
+	<meta property="og:image:alt" content="VapourDB Linux and Steam Deck compatibility" />
 	<meta property="og:image:type" content="image/png" />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
-	<meta name="twitter:title" content="Steam Games for Linux & Steam Deck | TuxGG" />
+	<meta name="twitter:title" content="Steam Games for Linux & Steam Deck | VapourDB" />
 	<meta
 		name="twitter:description"
 		content="Search the Steam game catalog and read player-submitted compatibility reports."
 	/>
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:image" content={data.ogImage} />
-	<meta name="twitter:image:alt" content="TuxGG Linux and Steam Deck compatibility" />
+	<meta name="twitter:image:alt" content="VapourDB Linux and Steam Deck compatibility" />
 </svelte:head>
 
 <section class="container-shell pt-12 sm:pt-20">
@@ -136,8 +136,9 @@
 			Game details stay useful.
 		</h2>
 		<p class="mt-3 max-w-xl text-sm leading-7 text-muted">
-			Steam provides game titles, artwork, descriptions, developers, and release information. TuxGG
-			keeps that catalog separate from player-submitted compatibility reports and system details.
+			Steam provides game titles, artwork, descriptions, developers, and release information.
+			VapourDB keeps that catalog separate from player-submitted compatibility reports and system
+			details.
 		</p>
 		<a
 			class="mt-6 inline-flex items-center gap-2 text-sm font-bold text-mint hover:text-lime"

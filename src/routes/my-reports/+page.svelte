@@ -13,7 +13,7 @@
 </script>
 
 <svelte:head>
-	<title>My Reports | TuxGG</title>
+	<title>My Reports | VapourDB</title>
 	<meta name="robots" content="noindex,follow" />
 </svelte:head>
 

@@ -8,6 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
+import { resolveBackupDirectory } from './backup-directory.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COLUMNS = [
@@ -93,13 +95,12 @@ function insideRepository(candidate, repository) {
 }
 
 async function makeBackupDirectory() {
-	const configured = process.env.TUXGG_BACKUP_DIR;
-	const backupDir = path.resolve(configured || path.join(os.homedir(), '.tuxgg-backups'));
+	const backupDir = resolveBackupDirectory();
 	await mkdir(backupDir, { recursive: true, mode: 0o700 });
 	const [realBackupDir, realRoot] = await Promise.all([realpath(backupDir), realpath(ROOT)]);
 	if (insideRepository(realBackupDir, realRoot)) {
 		throw new Error(
-			'The backup directory must be outside the Git repository. Set TUXGG_BACKUP_DIR to a private external directory.'
+			'The backup directory must be outside the Git repository. Set VAPOURDB_BACKUP_DIR to a private external directory (TUXGG_BACKUP_DIR is a deprecated fallback).'
 		);
 	}
 	return realBackupDir;
@@ -268,22 +269,28 @@ function commandAvailable(command) {
 }
 
 function chooseClientTools() {
-	const dump = process.env.TUXGG_PG_DUMP || 'pg_dump';
-	const restore = process.env.TUXGG_PG_RESTORE || 'pg_restore';
+	const dump = process.env.VAPOURDB_PG_DUMP || process.env.TUXGG_PG_DUMP || 'pg_dump';
+	const restore = process.env.VAPOURDB_PG_RESTORE || process.env.TUXGG_PG_RESTORE || 'pg_restore';
 	if (commandAvailable(dump) && commandAvailable(restore)) return { kind: 'host', dump, restore };
 	if (
-		(process.env.TUXGG_PG_DUMP || process.env.TUXGG_PG_RESTORE) &&
+		(process.env.VAPOURDB_PG_DUMP ||
+			process.env.TUXGG_PG_DUMP ||
+			process.env.VAPOURDB_PG_RESTORE ||
+			process.env.TUXGG_PG_RESTORE) &&
 		(!commandAvailable(dump) || !commandAvailable(restore))
 	) {
 		throw new Error(
-			'The configured TUXGG_PG_DUMP and TUXGG_PG_RESTORE utilities must both be executable.'
+			'The configured PostgreSQL dump and restore utilities must both be executable.'
 		);
 	}
 	if (commandAvailable('docker'))
 		return {
 			kind: 'docker',
 			executable: 'docker',
-			image: process.env.TUXGG_POSTGRES_CLIENT_IMAGE || 'postgres:18'
+			image:
+				process.env.VAPOURDB_POSTGRES_CLIENT_IMAGE ||
+				process.env.TUXGG_POSTGRES_CLIENT_IMAGE ||
+				'postgres:18'
 		};
 	throw new Error(
 		'PostgreSQL client tools were not found. Install pg_dump and pg_restore, or configure Docker.'
@@ -310,7 +317,7 @@ function connectionEnv(connection, passFile, container = false) {
 		PGUSER: connection.user,
 		PGDATABASE: connection.database,
 		PGPASSFILE: container ? '/work/pgpass' : passFile,
-		PGAPPNAME: 'tuxgg-games-backup'
+		PGAPPNAME: 'vapourdb-games-backup'
 	};
 	const sslMap = {
 		sslmode: 'PGSSLMODE',
@@ -425,12 +432,12 @@ function dockerArgs(engine, passFile, tool, args, connection) {
 		'--entrypoint',
 		'/bin/sh',
 		'--env',
-		'PGPASSFILE=/tmp/tuxgg-pgpass',
+		'PGPASSFILE=/tmp/vapourdb-pgpass',
 		...dockerEnvironment,
 		engine.image,
 		'-c',
-		'cp /work/pgpass /tmp/tuxgg-pgpass && chmod 600 /tmp/tuxgg-pgpass && exec "$@"',
-		'tuxgg-backup-client',
+		'cp /work/pgpass /tmp/vapourdb-pgpass && chmod 600 /tmp/vapourdb-pgpass && exec "$@"',
+		'vapourdb-backup-client',
 		tool,
 		...args
 	];
@@ -557,7 +564,7 @@ async function sha256(filePath) {
 
 async function verifyDatabaseIdentity(client) {
 	const result = await client.query(
-		`SELECT current_database() AS database,
+		`SELECT current_database() AS database, current_user AS role,
 		        has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read,
 		        c.relrowsecurity AS row_security,
 	        r.rolsuper AS is_superuser, r.rolbypassrls AS can_bypass_rls
@@ -567,8 +574,24 @@ async function verifyDatabaseIdentity(client) {
 		 WHERE n.nspname = 'public' AND c.relname = 'games' AND c.relkind IN ('r', 'p')`
 	);
 	const identity = result.rows[0];
-	if (!identity || identity.database !== 'tuxgg')
-		throw new Error('DATABASE_URL must connect to database tuxgg.');
+	const databaseIdentity = identityForDatabase(identity?.database);
+	const testIdentity = testIdentityForDatabase(identity?.database);
+	const expectedIdentity = databaseIdentity ?? testIdentity;
+	if (
+		!identity ||
+		!expectedIdentity ||
+		!Object.values(expectedIdentity.roles).includes(identity.role)
+	)
+		throw new Error(
+			'The source must use a VapourDB or legacy TuxGG application role and database.'
+		);
+	if (testIdentity) {
+		const marker = await client
+			.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)
+			.catch(() => ({ rows: [] }));
+		if (marker.rows[0]?.marker !== testIdentity.markerValue)
+			throw new Error('Refusing a test-database backup without its disposable safety marker.');
+	}
 	if (!identity.can_read) throw new Error('DATABASE_URL must have SELECT access to public.games.');
 	if (identity.row_security && !identity.is_superuser && !identity.can_bypass_rls) {
 		throw new Error(
@@ -603,9 +626,9 @@ async function run() {
 	);
 	const backupDir = await makeBackupDirectory();
 	const dateStamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-	const archivePath = path.join(backupDir, `tuxgg-games-${dateStamp}.dump`);
-	const csvPath = path.join(backupDir, `tuxgg-games-${dateStamp}.csv`);
-	const manifestPath = path.join(backupDir, `tuxgg-games-${dateStamp}.manifest.json`);
+	const archivePath = path.join(backupDir, `vapourdb-games-${dateStamp}.dump`);
+	const csvPath = path.join(backupDir, `vapourdb-games-${dateStamp}.csv`);
+	const manifestPath = path.join(backupDir, `vapourdb-games-${dateStamp}.manifest.json`);
 	for (const target of [archivePath, csvPath, manifestPath]) {
 		try {
 			await stat(target);
@@ -620,12 +643,12 @@ async function run() {
 	const engine = chooseClientTools();
 	const workDir = path.join(
 		backupDir,
-		`.tuxgg-games-${process.pid}-${randomBytes(5).toString('hex')}`
+		`.vapourdb-games-${process.pid}-${randomBytes(5).toString('hex')}`
 	);
 	const passFile = path.join(workDir, 'pgpass');
-	const partialCsv = path.join(workDir, `tuxgg-games-${dateStamp}.csv.partial`);
-	const partialDump = path.join(workDir, `tuxgg-games-${dateStamp}.dump.partial`);
-	const verifyDb = `tuxgg_games_verify_${dateStamp}_${randomBytes(4).toString('hex')}`;
+	const partialCsv = path.join(workDir, `vapourdb-games-${dateStamp}.csv.partial`);
+	const partialDump = path.join(workDir, `vapourdb-games-${dateStamp}.dump.partial`);
+	const verifyDb = `vapourdb_games_verify_${dateStamp}_${randomBytes(4).toString('hex')}`;
 	let source;
 	let admin;
 	let createdVerifyDb = false;
@@ -644,7 +667,7 @@ async function run() {
 		await source.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
 		await source.query("SET LOCAL TIME ZONE 'UTC'");
 		await source.query('SET LOCAL row_security = off');
-		await verifyDatabaseIdentity(source);
+		const sourceIdentity = await verifyDatabaseIdentity(source);
 		const counts = await source.query(
 			'SELECT count(*)::bigint AS row_count, count(DISTINCT app_id)::bigint AS unique_app_ids FROM public.games'
 		);
@@ -735,9 +758,9 @@ async function run() {
 			sha256(archivePath)
 		]);
 		const manifest = {
-			format: 'tuxgg-games-backup-v1',
+			format: 'vapourdb-games-backup-v1',
 			verifiedAt: new Date().toISOString(),
-			database: 'tuxgg',
+			database: sourceIdentity.database,
 			originalCount,
 			csvCount,
 			archiveRestoredRows: restoreResult.rows,
@@ -754,6 +777,7 @@ async function run() {
 		});
 		publishedFiles.push(manifestPath);
 		resultSummary = {
+			sourceDatabase: sourceIdentity.database,
 			originalCount,
 			csvCount,
 			restoreResult,
@@ -781,7 +805,7 @@ async function run() {
 	}
 
 	console.log('Games backup verified successfully.');
-	console.log(`Source database: tuxgg`);
+	console.log(`Source database: ${resultSummary.sourceDatabase}`);
 	console.log(`Original game records: ${resultSummary.originalCount}`);
 	console.log(`CSV records verified: ${resultSummary.csvCount}`);
 	console.log(`AppIDs preserved and unique: ${resultSummary.restoreResult.appIds}`);

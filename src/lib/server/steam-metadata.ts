@@ -94,7 +94,7 @@ export async function fetchSteamDetails(
 		try {
 			const response = await fetchImpl(url, {
 				signal: controller.signal,
-				headers: { 'user-agent': 'TuxGG Steam catalog sync (development)' }
+				headers: { 'user-agent': 'VapourDB Steam catalog sync (development)' }
 			});
 			if (response.status === 403) return { status: 'unavailable', data: null, code: 403 };
 			const retryable = response.status === 429 || response.status >= 500;

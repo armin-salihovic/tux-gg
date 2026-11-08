@@ -21,16 +21,19 @@ const databaseUrl = process.env.DATABASE_URL;
 
 describe.skipIf(!enabled)('saved device PostgreSQL integration', () => {
 	it('scopes device operations to the owner and keeps one default across concurrent changes', async () => {
-		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'tuxgg_test') {
-			throw new Error('Device integration tests require DATABASE_URL to target tuxgg_test.');
+		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'vapourdb_test') {
+			throw new Error('Device integration tests require DATABASE_URL to target vapourdb_test.');
 		}
 		const pool = getPool();
 		const identity = await pool.query('SELECT current_database(), current_user');
-		expect(identity.rows[0]).toEqual({ current_database: 'tuxgg_test', current_user: 'tuxgg_web' });
+		expect(identity.rows[0]).toEqual({
+			current_database: 'vapourdb_test',
+			current_user: 'vapourdb_web'
+		});
 		const marker = await pool.query(
-			'SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
+			'SELECT marker FROM public.vapourdb_test_safety_marker WHERE id = 1'
 		);
-		expect(marker.rows[0]?.marker).toBe('tuxgg_disposable_test_database_v1');
+		expect(marker.rows[0]?.marker).toBe('vapourdb_disposable_test_database_v1');
 
 		const suffix = randomUUID();
 		const userId = `device-${suffix}`;

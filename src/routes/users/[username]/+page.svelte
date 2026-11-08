@@ -7,18 +7,18 @@
 </script>
 
 <svelte:head
-	><title>{data.profile.name} (@{data.profile.username}) | TuxGG</title><meta
+	><title>{data.profile.name} (@{data.profile.username}) | VapourDB</title><meta
 		name="description"
-		content={`TuxGG community profile for ${data.profile.name}.`}
+		content={`VapourDB community profile for ${data.profile.name}.`}
 	/><link rel="canonical" href={data.canonical} /><meta
 		property="og:title"
-		content={`${data.profile.name} (@${data.profile.username}) | TuxGG`}
+		content={`${data.profile.name} (@${data.profile.username}) | VapourDB`}
 	/><meta property="og:url" content={data.canonical} /><meta
 		name="twitter:card"
 		content="summary"
 	/><meta
 		name="twitter:title"
-		content={`${data.profile.name} | TuxGG`}
+		content={`${data.profile.name} | VapourDB`}
 	/>{#if data.profile.contributionCount === 0}<meta
 			name="robots"
 			content="noindex,follow"
@@ -42,7 +42,7 @@
 		<div class="mt-7 grid w-full max-w-md grid-cols-2 gap-3">
 			<div class="rounded-xl border border-white/[0.07] bg-black/10 p-4">
 				<div class="text-2xl font-extrabold text-mint">{data.profile.contributionCount}</div>
-				<div class="mt-1 text-xs text-muted">published TuxGG reports</div>
+				<div class="mt-1 text-xs text-muted">published VapourDB reports</div>
 			</div>
 			<div class="rounded-xl border border-white/[0.07] bg-black/10 p-4">
 				<div class="text-sm font-bold text-white">{joined}</div>

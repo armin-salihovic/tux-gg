@@ -6,8 +6,8 @@
 		{
 			title: 'Player-reported outcomes',
 			paragraphs: [
-				'Each TuxGG report describes one player’s experience on a Linux desktop or Steam Deck. The author selects whether the game worked for that setup and can add Proton, distribution, hardware, performance, or issue details.',
-				'TuxGG shows published reports individually instead of combining them into a single compatibility score. Compare the hardware and software details before applying an outcome to your own system.'
+				'Each VapourDB report describes one player’s experience on a Linux desktop or Steam Deck. The author selects whether the game worked for that setup and can add Proton, distribution, hardware, performance, or issue details.',
+				'VapourDB shows published reports individually instead of combining them into a single compatibility score. Compare the hardware and software details before applying an outcome to your own system.'
 			]
 		},
 		{
@@ -22,8 +22,8 @@
 
 <ContentPage
 	eyebrow="Community reports"
-	title="How TuxGG reports work"
-	intro="TuxGG displays player experiences with their reported setup details and moderation status."
+	title="How VapourDB reports work"
+	intro="VapourDB displays player experiences with their reported setup details and moderation status."
 	{sections}
 	canonical={data.canonical}
 />

@@ -21,19 +21,23 @@ const operator = migrationUrl ? new Pool({ connectionString: migrationUrl }) : u
 
 describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 	it('requires a verified owner device and keeps its report hardware snapshot immutable', async () => {
-		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'tuxgg_test') {
-			throw new Error('Native report integration tests require DATABASE_URL to target tuxgg_test.');
+		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'vapourdb_test') {
+			throw new Error(
+				'Native report integration tests require DATABASE_URL to target vapourdb_test.'
+			);
 		}
 		const pool = getPool();
 		const identity = await pool.query('SELECT current_database(), current_user');
-		if (identity.rows[0]?.current_database !== 'tuxgg_test') {
-			throw new Error('Native report integration tests refused a database other than tuxgg_test.');
+		if (identity.rows[0]?.current_database !== 'vapourdb_test') {
+			throw new Error(
+				'Native report integration tests refused a database other than vapourdb_test.'
+			);
 		}
-		expect(identity.rows[0]?.current_user).toBe('tuxgg_web');
+		expect(identity.rows[0]?.current_user).toBe('vapourdb_web');
 		const marker = await pool.query(
-			' SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
+			' SELECT marker FROM public.vapourdb_test_safety_marker WHERE id = 1'
 		);
-		expect(marker.rows[0]?.marker).toBe('tuxgg_disposable_test_database_v1');
+		expect(marker.rows[0]?.marker).toBe('vapourdb_disposable_test_database_v1');
 		const [game] = await getDb()
 			.select({ appId: games.appId })
 			.from(games)
@@ -221,13 +225,13 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 	});
 
 	it('recalculates public tiers as reports move through moderation states', async () => {
-		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'tuxgg_test') {
-			throw new Error('Scoring integration tests require DATABASE_URL to target tuxgg_test.');
+		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'vapourdb_test') {
+			throw new Error('Scoring integration tests require DATABASE_URL to target vapourdb_test.');
 		}
 		if (!operator) throw new Error('Scoring integration tests require MIGRATION_DATABASE_URL.');
 		const identity = await operator.query('SELECT current_database(), current_user');
-		expect(identity.rows[0]?.current_database).toBe('tuxgg_test');
-		expect(identity.rows[0]?.current_user).toBe('tuxgg_migrator');
+		expect(identity.rows[0]?.current_database).toBe('vapourdb_test');
+		expect(identity.rows[0]?.current_user).toBe('vapourdb_migrator');
 		const appId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 		const userId = `score-${randomUUID()}`;
 		const reportIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];

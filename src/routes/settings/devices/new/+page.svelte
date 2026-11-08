@@ -6,7 +6,7 @@
 </script>
 
 <svelte:head
-	><title>Add device | TuxGG</title><meta name="robots" content="noindex,follow" /></svelte:head
+	><title>Add device | VapourDB</title><meta name="robots" content="noindex,follow" /></svelte:head
 >
 <DeviceEditor
 	editing={false}

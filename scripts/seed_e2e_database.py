@@ -6,8 +6,8 @@ from __future__ import annotations
 import os
 import sys
 
-EXPECTED_DATABASE = "tuxgg_test"
-MARKER_VALUE = "tuxgg_disposable_test_database_v1"
+EXPECTED_DATABASE = "vapourdb_test"
+MARKER_VALUE = "vapourdb_disposable_test_database_v1"
 GAMES = (
 	(
 		"440",
@@ -23,7 +23,7 @@ GAMES = (
 def main() -> int:
     url = os.environ.get("TEST_DATABASE_URL")
     if not url:
-        print("Set TEST_DATABASE_URL to the marked tuxgg_test database.", file=sys.stderr)
+        print("Set TEST_DATABASE_URL to the marked vapourdb_test database.", file=sys.stderr)
         return 1
     try:
         import psycopg
@@ -32,8 +32,8 @@ def main() -> int:
         with psycopg.connect(url, connect_timeout=5) as conn, conn.cursor() as cur:
             cur.execute("SELECT current_database()")
             if cur.fetchone()[0] != EXPECTED_DATABASE:
-                raise RuntimeError("Refusing to seed fixtures outside tuxgg_test.")
-            cur.execute("SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1")
+                raise RuntimeError("Refusing to seed fixtures outside vapourdb_test.")
+            cur.execute("SELECT marker FROM public.vapourdb_test_safety_marker WHERE id = 1")
             marker = cur.fetchone()
             if marker is None or marker[0] != MARKER_VALUE:
                 raise RuntimeError("Refusing to seed fixtures without the disposable database marker.")
@@ -43,7 +43,7 @@ def main() -> int:
                     "ON CONFLICT (app_id) DO UPDATE SET title = EXCLUDED.title, slug = EXCLUDED.slug, metadata = EXCLUDED.metadata, updated_at = now()",
                     (app_id, title, slug, Json(metadata)),
                 )
-        print("Seeded deterministic game fixtures in tuxgg_test.")
+        print("Seeded deterministic game fixtures in vapourdb_test.")
         return 0
     except Exception as exc:
         print(f"Browser-test fixture seeding failed: {type(exc).__name__}.", file=sys.stderr)

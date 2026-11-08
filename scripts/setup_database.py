@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the TuxGG database and its least-privilege runtime roles."""
+"""Prepare the VapourDB database and its least-privilege runtime roles."""
 
 from __future__ import annotations
 
@@ -11,12 +11,18 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV_FILE = ROOT / ".env"
-DATABASE = "tuxgg"
+ENV_FILE = Path(os.environ.get("VAPOURDB_ENV_FILE", ROOT / ".env"))
+DATABASE = "vapourdb"
 MAINTENANCE_DATABASE = "postgres"
-WEB_ROLE = "tuxgg_web"
-IMPORTER_ROLE = "tuxgg_importer"
-MIGRATION_ROLE = "tuxgg_migrator"
+WEB_ROLE = "vapourdb_web"
+IMPORTER_ROLE = "vapourdb_importer"
+MIGRATION_ROLE = "vapourdb_migrator"
+DATABASE_IDENTITIES = {
+    "vapourdb": ("vapourdb", "vapourdb_web", "vapourdb_importer", "vapourdb_migrator"),
+    "vapourdb_test": ("vapourdb", "vapourdb_web", "vapourdb_importer", "vapourdb_migrator"),
+    "tuxgg": ("tuxgg", "tuxgg_web", "tuxgg_importer", "tuxgg_migrator"),
+    "tuxgg_test": ("tuxgg", "tuxgg_web", "tuxgg_importer", "tuxgg_migrator"),
+}
 
 TABLES = (
     "games",
@@ -190,7 +196,7 @@ def _create_login_role(cur, role: str, password: str) -> None:
     )
 
 
-def _validate_role(cur, role: str) -> None:
+def _validate_role(cur, role: str, database: str = DATABASE) -> None:
     cur.execute(
         "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
         "FROM pg_roles WHERE rolname = %s",
@@ -211,10 +217,10 @@ def _validate_role(cur, role: str) -> None:
     cur.execute(
         "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname <> %s "
         "AND datdba = (SELECT oid FROM pg_roles WHERE rolname = %s))",
-        (DATABASE, role),
+        (database, role),
     )
     if cur.fetchone()[0]:
-        raise RuntimeError(f"The {role} role owns a database outside TuxGG.")
+        raise RuntimeError(f"The {role} role owns a database outside VapourDB.")
 
 
 def _url_for_role(
@@ -224,6 +230,7 @@ def _url_for_role(
     role: str,
     env_key: str,
     cur,
+    database: str = DATABASE,
 ) -> str:
     from psycopg import sql
 
@@ -238,89 +245,87 @@ def _url_for_role(
     )
     if _role_exists(cur, role):
         if existing_url and urlsplit(existing_url).username == role:
-            return url_for_database(existing_url, DATABASE)
+            return url_for_database(existing_url, database)
         password = secrets.token_urlsafe(36)
         cur.execute(
             sql.SQL("ALTER ROLE {} PASSWORD {}").format(sql.Identifier(role), sql.Literal(password))
         )
-        new_values[env_key] = url_for_database(admin_url, DATABASE, role, password)
+        new_values[env_key] = url_for_database(admin_url, database, role, password)
         return new_values[env_key]
 
     password = secrets.token_urlsafe(36)
     _create_login_role(cur, role, password)
-    new_values[env_key] = url_for_database(admin_url, DATABASE, role, password)
+    new_values[env_key] = url_for_database(admin_url, database, role, password)
     return new_values[env_key]
 
 
-def _prepare_database(admin_url: str, database_exists: bool) -> None:
+def _prepare_database(admin_url: str, database_exists: bool, database: str, roles: tuple[str, str, str]) -> None:
     from psycopg import sql
 
     with connect(admin_url) as conn:
         _verify_admin_database(conn)
         with conn.cursor() as cur:
-            for role in (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE):
+            for role in roles:
                 if _role_exists(cur, role):
-                    _validate_role(cur, role)
+                    _validate_role(cur, role, database)
             if not database_exists:
-                cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(DATABASE)))
-            for role in (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE):
+                cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
+            for role in roles:
                 cur.execute(
                     sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
-                        sql.Identifier(DATABASE), sql.Identifier(role)
+                        sql.Identifier(database), sql.Identifier(role)
                     )
                 )
             cur.execute(
                 sql.SQL("GRANT CREATE ON DATABASE {} TO {}").format(
-                    sql.Identifier(DATABASE), sql.Identifier(MIGRATION_ROLE)
+                    sql.Identifier(database), sql.Identifier(roles[2])
                 )
             )
             cur.execute(
-                sql.SQL("REVOKE CREATE ON DATABASE {} FROM PUBLIC").format(sql.Identifier(DATABASE))
+                sql.SQL("REVOKE CREATE ON DATABASE {} FROM PUBLIC").format(sql.Identifier(database))
             )
-            for role in (WEB_ROLE, IMPORTER_ROLE):
+            for role in roles[:2]:
                 cur.execute(
                     sql.SQL("REVOKE CREATE ON DATABASE {} FROM {}").format(
-                        sql.Identifier(DATABASE), sql.Identifier(role)
+                        sql.Identifier(database), sql.Identifier(role)
                     )
                 )
 
 
-def _grant_runtime_access(database_admin_url: str) -> None:
+def _grant_runtime_access(database_admin_url: str, database: str, roles: tuple[str, str, str]) -> None:
     from psycopg import sql
 
-    roles = [WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE]
-    revoke_roles = [role for role in roles if role != MIGRATION_ROLE]
+    web_role, importer_role, migration_role = roles
+    revoke_roles = [web_role, importer_role]
     with connect(database_admin_url) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT current_database()")
-            if cur.fetchone()[0] != DATABASE:
-                raise RuntimeError("Refusing schema changes outside the tuxgg database.")
+            if cur.fetchone()[0] != database:
+                raise RuntimeError(f"Refusing schema changes outside the {database} database.")
             cur.execute(
                 "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = %s",
-                (DATABASE,),
+                (database,),
             )
             database_owner = cur.fetchone()[0]
-            if database_owner in (WEB_ROLE, IMPORTER_ROLE):
-                raise RuntimeError("A runtime role owns the TuxGG database; transfer ownership before setup.")
+            if database_owner in (web_role, importer_role):
+                raise RuntimeError("A runtime role owns the VapourDB database; transfer ownership before setup.")
 
             cur.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
-            cur.execute(sql.SQL("ALTER SCHEMA public OWNER TO {}").format(sql.Identifier(MIGRATION_ROLE)))
+            cur.execute(sql.SQL("ALTER SCHEMA public OWNER TO {}").format(sql.Identifier(migration_role)))
             for role in roles:
                 cur.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role)))
                 cur.execute(
                     sql.SQL("REVOKE CREATE ON SCHEMA public FROM {}").format(sql.Identifier(role))
                 )
-            cur.execute(
-                sql.SQL("GRANT CREATE ON SCHEMA public TO {}").format(sql.Identifier(MIGRATION_ROLE))
-            )
+            cur.execute(sql.SQL("GRANT CREATE ON SCHEMA public TO {}").format(sql.Identifier(migration_role)))
 
-            # Existing TuxGG objects move to the migration role so later migrations can alter them.
+            # Existing VapourDB objects move to the migration role so later migrations can alter them.
             for table in TABLES:
                 cur.execute("SELECT to_regclass(%s)", (f"public.{table}",))
                 if cur.fetchone()[0] is not None:
                     cur.execute(
                         sql.SQL("ALTER TABLE public.{} OWNER TO {}").format(
-                            sql.Identifier(table), sql.Identifier(MIGRATION_ROLE)
+                        sql.Identifier(table), sql.Identifier(migration_role)
                         )
                     )
             for sequence in SEQUENCES:
@@ -328,7 +333,7 @@ def _grant_runtime_access(database_admin_url: str) -> None:
                 if cur.fetchone()[0] is not None:
                     cur.execute(
                         sql.SQL("ALTER SEQUENCE public.{} OWNER TO {}").format(
-                            sql.Identifier(sequence), sql.Identifier(MIGRATION_ROLE)
+                        sql.Identifier(sequence), sql.Identifier(migration_role)
                         )
                     )
 
@@ -348,15 +353,15 @@ def _grant_runtime_access(database_admin_url: str) -> None:
                 if table in WEB_PRIVILEGES:
                     cur.execute(
                         sql.SQL("GRANT " + WEB_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(
-                            sql.Identifier(table), sql.Identifier(WEB_ROLE)
+                            sql.Identifier(table), sql.Identifier(web_role)
                         )
                     )
                 if table == "native_reports":
-                    grant_native_report_insert_columns(cur, (WEB_ROLE,))
+                    grant_native_report_insert_columns(cur, (web_role,))
                 if table in IMPORTER_PRIVILEGES:
                     cur.execute(
                         sql.SQL("GRANT " + IMPORTER_PRIVILEGES[table] + " ON TABLE public.{} TO {}").format(
-                            sql.Identifier(table), sql.Identifier(IMPORTER_ROLE)
+                            sql.Identifier(table), sql.Identifier(importer_role)
                         )
                     )
 
@@ -372,7 +377,7 @@ def _grant_runtime_access(database_admin_url: str) -> None:
                     )
                 cur.execute(
                     sql.SQL("GRANT USAGE, SELECT ON SEQUENCE public.{} TO {}").format(
-                        sql.Identifier(sequence), sql.Identifier(IMPORTER_ROLE)
+                        sql.Identifier(sequence), sql.Identifier(importer_role)
                     )
                 )
 
@@ -380,8 +385,27 @@ def _grant_runtime_access(database_admin_url: str) -> None:
             # keep new tables out of both runtime roles until their access is reviewed.
 
 
+def resolve_identity(values: dict[str, str]) -> tuple[str, tuple[str, str, str]]:
+    """Keep an existing legacy .env usable until its database is safely cut over."""
+    candidates = []
+    for key in ("MIGRATION_DATABASE_URL", "DATABASE_URL", "IMPORTER_DATABASE_URL"):
+        raw = os.environ.get(key) or values.get(key)
+        if raw:
+            candidates.append((key, urlsplit(raw).path.rstrip("/").split("/")[-1]))
+    identities = {DATABASE_IDENTITIES[name] for _, name in candidates if name in DATABASE_IDENTITIES}
+    if len(identities) > 1:
+        raise RuntimeError("Configured database URLs mix legacy and VapourDB identities.")
+    if identities:
+        database, web, importer, migrator = next(iter(identities))
+        return database, (web, importer, migrator)
+    return "vapourdb", ("vapourdb_web", "vapourdb_importer", "vapourdb_migrator")
+
+
 def run(grant_only: bool) -> None:
+    global DATABASE, WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE
     file_values = read_env_file()
+    DATABASE, roles = resolve_identity(file_values)
+    WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE = roles
     admin_url = os.environ.get("PGADMIN_URL") or file_values.get("PGADMIN_URL")
     if not admin_url:
         raise RuntimeError("Set PGADMIN_URL to a PostgreSQL administrator connection in .env.")
@@ -396,38 +420,39 @@ def run(grant_only: bool) -> None:
                     raise RuntimeError("Run database setup first so the web, importer, and migration roles exist.")
                 for role in (WEB_ROLE, IMPORTER_ROLE, MIGRATION_ROLE):
                     if _role_exists(cur, role):
-                        _validate_role(cur, role)
+                        _validate_role(cur, role, DATABASE)
                 cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DATABASE,))
                 if cur.fetchone() is None:
-                    raise RuntimeError("The tuxgg database does not exist; run setup without --grant-only first.")
-        _grant_runtime_access(url_for_database(admin_url, DATABASE))
-        print("TuxGG-only runtime grants refreshed for the web and importer roles.")
+                    raise RuntimeError(f"The {DATABASE} database does not exist; run setup without --grant-only first.")
+        _grant_runtime_access(url_for_database(admin_url, DATABASE), DATABASE, roles)
+        print("VapourDB-only runtime grants refreshed for the web and importer roles.")
         return
 
     new_values: dict[str, str] = {"PGADMIN_URL": admin_url}
+    runtime_roles = roles
     with connect(admin_url) as conn:
         _verify_admin_database(conn)
         with conn.cursor() as cur:
-            roles = {
-                WEB_ROLE: _url_for_role(admin_url, file_values, new_values, WEB_ROLE, "DATABASE_URL", cur),
+            role_urls = {
+                WEB_ROLE: _url_for_role(admin_url, file_values, new_values, WEB_ROLE, "DATABASE_URL", cur, DATABASE),
                 IMPORTER_ROLE: _url_for_role(
-                    admin_url, file_values, new_values, IMPORTER_ROLE, "IMPORTER_DATABASE_URL", cur
+                    admin_url, file_values, new_values, IMPORTER_ROLE, "IMPORTER_DATABASE_URL", cur, DATABASE
                 ),
                 MIGRATION_ROLE: _url_for_role(
-                    admin_url, file_values, new_values, MIGRATION_ROLE, "MIGRATION_DATABASE_URL", cur
+                    admin_url, file_values, new_values, MIGRATION_ROLE, "MIGRATION_DATABASE_URL", cur, DATABASE
                 ),
             }
             cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DATABASE,))
             database_exists = cur.fetchone() is not None
 
-    _prepare_database(admin_url, database_exists)
-    _grant_runtime_access(url_for_database(admin_url, DATABASE))
+    _prepare_database(admin_url, database_exists, DATABASE, runtime_roles)
+    _grant_runtime_access(url_for_database(admin_url, DATABASE), DATABASE, runtime_roles)
     for role, env_key in (
         (WEB_ROLE, "DATABASE_URL"),
         (IMPORTER_ROLE, "IMPORTER_DATABASE_URL"),
         (MIGRATION_ROLE, "MIGRATION_DATABASE_URL"),
     ):
-        url = new_values.get(env_key) or file_values.get(env_key) or os.environ.get(env_key)
+        url = role_urls.get(role) or new_values.get(env_key) or file_values.get(env_key) or os.environ.get(env_key)
         if not url:
             raise RuntimeError(f"No connection URL was available for the {role} role.")
         try:
@@ -456,7 +481,7 @@ def run(grant_only: bool) -> None:
                 (parts.scheme, userinfo + host, f"/{DATABASE}", parts.query, "")
             )
     write_env_file(new_values)
-    print("TuxGG database roles are ready. Connection URLs were saved to the ignored .env file and were not displayed.")
+    print("VapourDB database roles are ready. Connection URLs were saved to the ignored .env file and were not displayed.")
 
 
 def main() -> int:
@@ -468,7 +493,7 @@ def main() -> int:
         return 0
     except Exception:
         print(
-            "Database setup failed. Check the PostgreSQL maintenance connection, role state, and TuxGG database; credentials and connection details are not printed.",
+            "Database setup failed. Check the PostgreSQL maintenance connection, role state, and VapourDB database; credentials and connection details are not printed.",
             file=sys.stderr,
         )
         return 1

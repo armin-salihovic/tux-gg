@@ -6,7 +6,7 @@
 		{
 			title: 'A Steam-first game catalog',
 			paragraphs: [
-				'TuxGG keeps a searchable catalog keyed by Steam AppID. Existing titles, slugs, artwork, and metadata are preserved, while Steam store data can fill gaps and refresh changing details.',
+				'VapourDB keeps a searchable catalog keyed by Steam AppID. Existing titles, slugs, artwork, and metadata are preserved, while Steam store data can fill gaps and refresh changing details.',
 				'Game pages link to Steam and show the metadata available for that catalog entry.'
 			]
 		},
@@ -21,9 +21,9 @@
 </script>
 
 <ContentPage
-	eyebrow="About TuxGG"
+	eyebrow="About VapourDB"
 	title="Make Linux game compatibility easier to understand"
-	intro="TuxGG combines a Steam game catalog with player-submitted Linux and Steam Deck reports."
+	intro="VapourDB combines a Steam game catalog with player-submitted Linux and Steam Deck reports."
 	{sections}
 	canonical={data.canonical}
 />

@@ -14,7 +14,7 @@
 		{
 			title: 'Project information',
 			paragraphs: [
-				'TuxGG maintains its own Steam game catalog and community reports. Use the configured project contact for support, privacy requests, or game metadata corrections.'
+				'VapourDB maintains its own Steam game catalog and community reports. Use the configured project contact for support, privacy requests, or game metadata corrections.'
 			]
 		}
 	]);
@@ -24,8 +24,8 @@
 	eyebrow="Contact"
 	title="Get in touch"
 	intro={data.contactEmail
-		? 'Reach the TuxGG project team for support, privacy requests, or data corrections.'
-		: 'TuxGG needs a project contact channel before it can accept public support or privacy requests.'}
+		? 'Reach the VapourDB project team for support, privacy requests, or data corrections.'
+		: 'VapourDB needs a project contact channel before it can accept public support or privacy requests.'}
 	{sections}
 	canonical={data.canonical}
 />

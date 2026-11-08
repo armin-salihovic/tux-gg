@@ -17,18 +17,27 @@
 		sections: ContentSection[];
 		canonical?: string;
 	} = $props();
+	const ogImage = $derived(
+		canonical ? new URL('/og-default.png', canonical).toString() : '/og-default.png'
+	);
 </script>
 
 <svelte:head>
-	<title>{title} | TuxGG</title>
+	<title>{title} | VapourDB</title>
 	<meta name="description" content={intro} />
 	<meta property="og:type" content="website" />
-	<meta property="og:site_name" content="TuxGG" />
-	<meta property="og:title" content={`${title} | TuxGG`} />
+	<meta property="og:title" content={`${title} | VapourDB`} />
 	<meta property="og:description" content={intro} />
-	<meta name="twitter:card" content="summary" />
-	<meta name="twitter:title" content={`${title} | TuxGG`} />
+	<meta property="og:image" content={ogImage} />
+	<meta property="og:image:alt" content="VapourDB Linux and Steam Deck compatibility" />
+	<meta property="og:image:type" content="image/png" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content={`${title} | VapourDB`} />
 	<meta name="twitter:description" content={intro} />
+	<meta name="twitter:image" content={ogImage} />
+	<meta name="twitter:image:alt" content="VapourDB Linux and Steam Deck compatibility" />
 	{#if canonical}<link rel="canonical" href={canonical} /><meta
 			property="og:url"
 			content={canonical}

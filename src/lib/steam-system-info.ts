@@ -170,13 +170,13 @@ export function parseSteamSystemInfo(input: string): SystemInfoParseResult {
 	if (/\bwindows\s*(?:10|11|7|8|8\.1)?\b|\bwin32\b|\bwin64\b/i.test(osText)) {
 		return failure(
 			'unsupported_os',
-			'This system information appears to come from Windows. Only Linux PCs and Steam Decks can be added to TuxGG.'
+			'This system information appears to come from Windows. Only Linux PCs and Steam Decks can be added to VapourDB.'
 		);
 	}
 	if (/\bmac\s*os(?:\s*x)?\b|\bmacos\b|\bos\s*x\b/i.test(osText)) {
 		return failure(
 			'unsupported_os',
-			'This system information appears to come from macOS. Only Linux PCs and Steam Decks can be added to TuxGG.'
+			'This system information appears to come from macOS. Only Linux PCs and Steam Decks can be added to VapourDB.'
 		);
 	}
 

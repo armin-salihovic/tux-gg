@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List and moderate native TuxGG reports using an operator-only database URL."""
+"""List and moderate native VapourDB reports using an operator-only database URL."""
 
 from __future__ import annotations
 
@@ -10,9 +10,10 @@ import sys
 import uuid
 
 import psycopg
-
-TEST_DATABASE = "tuxgg_test"
-TEST_MARKER = "tuxgg_disposable_test_database_v1"
+try:
+    from .setup_database import DATABASE_IDENTITIES
+except ImportError:
+    from setup_database import DATABASE_IDENTITIES
 TRANSITIONS = {"approve": "published", "hide": "hidden", "remove": "removed"}
 
 
@@ -28,17 +29,20 @@ def verify_operator_connection(conn) -> None:
         if not row:
             raise RuntimeError("Could not verify the operator database connection.")
         database, role, is_superuser, can_select, can_update = row
-        if database not in ("tuxgg", TEST_DATABASE):
-            raise RuntimeError("Moderation is allowed only on tuxgg or the marked tuxgg_test database.")
-        if role in ("tuxgg_web", "tuxgg_importer") or is_superuser:
+        identity = DATABASE_IDENTITIES.get(database)
+        if identity is None or not (database.endswith("_test") or database == identity[0]):
+            raise RuntimeError("Moderation is allowed only on VapourDB or legacy TuxGG databases.")
+        if role in identity[1:3] or is_superuser:
             raise RuntimeError("Use a non-administrator operator or migration role for moderation.")
         if not can_select or not can_update:
             raise RuntimeError("The configured operator role cannot moderate native reports.")
-        if database == TEST_DATABASE:
-            cur.execute("SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1")
+        if database.endswith("_test"):
+            marker_table = f"{database}_safety_marker"
+            marker_value = f"{identity[0]}_disposable_test_database_v1"
+            cur.execute(f"SELECT marker FROM public.{marker_table} WHERE id = 1")
             marker = cur.fetchone()
-            if marker is None or marker[0] != TEST_MARKER:
-                raise RuntimeError("Refusing to moderate an unmarked tuxgg_test database.")
+            if marker is None or marker[0] != marker_value:
+                raise RuntimeError("Refusing to moderate an unmarked disposable test database.")
 
 
 def list_pending(conn) -> list[tuple]:

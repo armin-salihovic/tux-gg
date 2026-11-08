@@ -24,7 +24,7 @@
 		{
 			title: 'Moderation and reporting',
 			paragraphs: [
-				'New TuxGG reports are private while pending review. A moderator may publish, hide, or remove a report. Published reports show the author’s public TuxGG username and the technical details they chose to provide.'
+				'New VapourDB reports are private while pending review. A moderator may publish, hide, or remove a report. Published reports show the author’s public VapourDB username and the technical details they chose to provide.'
 			]
 		}
 	];

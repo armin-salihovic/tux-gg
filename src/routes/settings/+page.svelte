@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head
-	><title>Account settings | TuxGG</title><meta
+	><title>Account settings | VapourDB</title><meta
 		name="robots"
 		content="noindex,follow"
 	/></svelte:head
@@ -14,7 +14,7 @@
 	<p class="eyebrow">Account</p>
 	<h1 class="mt-2 text-3xl font-black tracking-tight text-white">Profile settings</h1>
 	<p class="mt-2 text-sm text-muted">
-		Your TuxGG username and display name appear on your public profile.
+		Your VapourDB username and display name appear on your public profile.
 	</p>
 	<nav class="mt-6 flex flex-wrap gap-2" aria-label="Account settings">
 		<a class="rounded-full bg-mint/10 px-4 py-2 text-sm font-semibold text-mint" href="/settings"
@@ -39,7 +39,7 @@
 		</div>{/if}
 	<form method="POST" action="?/profile" class="surface mt-6 space-y-5 rounded-2xl p-6">
 		<label class="block text-sm font-semibold text-slate-200" for="name"
-			>TuxGG display name<input
+			>VapourDB display name<input
 				id="name"
 				name="name"
 				required

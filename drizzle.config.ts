@@ -4,7 +4,7 @@ import { defineConfig } from 'drizzle-kit';
 const databaseUrl = process.env.MIGRATION_DATABASE_URL;
 if (!databaseUrl) {
 	throw new Error(
-		'Set MIGRATION_DATABASE_URL to the dedicated TuxGG migration connection before running Drizzle Kit.'
+		'Set MIGRATION_DATABASE_URL to the dedicated VapourDB migration connection before running Drizzle Kit.'
 	);
 }
 

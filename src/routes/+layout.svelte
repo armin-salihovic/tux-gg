@@ -13,7 +13,7 @@
 
 <svelte:head>
 	<meta name="theme-color" content="#091014" />
-	<meta property="og:site_name" content="TuxGG" />
+	<meta property="og:site_name" content="VapourDB" />
 </svelte:head>
 
 <div class="flex min-h-screen flex-col">
@@ -25,7 +25,7 @@
 		<div class="container-shell grid gap-8 py-9 sm:grid-cols-[1fr_auto] sm:items-end">
 			<div>
 				<a class="font-extrabold tracking-tight text-base text-white no-underline" href="/"
-					>Tux<span class="text-mint">GG</span></a
+					>Vapour<span class="text-mint">DB</span></a
 				>
 				<p class="mt-2 max-w-xl text-xs leading-5 text-muted">
 					A preserved Steam game catalog with player-submitted Linux compatibility reports.

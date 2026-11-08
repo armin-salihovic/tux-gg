@@ -349,7 +349,9 @@ export function steamOpenID(apiKey: string | undefined, siteURL: string): Better
 						profile?.image
 					);
 					if (!session) {
-						ctx.context.logger.warn('Steam sign-in could not create or retrieve a TuxGG account.');
+						ctx.context.logger.warn(
+							'Steam sign-in could not create or retrieve a VapourDB account.'
+						);
 						throw ctx.redirect(loginErrorURL(origin, 'steam_account_unavailable'));
 					}
 					await setSessionCookie(ctx, session);

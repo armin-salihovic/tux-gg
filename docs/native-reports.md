@@ -1,4 +1,4 @@
-# TuxGG community reports
+# VapourDB community reports
 
 ## Submission and display
 
@@ -23,7 +23,7 @@ pnpm db:test:prepare
 pnpm db:test:seed-e2e
 ```
 
-Set `TEST_DATABASE_URL` to an admin connection for `tuxgg_test`, `DATABASE_URL` to `tuxgg_web` on that database, and `MIGRATION_DATABASE_URL` to `tuxgg_migrator` on that database. The safety marker is required before integration tests run. Never point tests at the normal `tuxgg` database.
+Set `TEST_DATABASE_URL` to an administrator connection for `vapourdb_test`, `DATABASE_URL` to `vapourdb_web` on that database, and `MIGRATION_DATABASE_URL` to `vapourdb_migrator` on that database. The safety marker is required before integration tests run. Never point tests at the normal development database.
 
 For operator moderation, set `NATIVE_REPORT_OPERATOR_DATABASE_URL` only in the operator shell:
 
@@ -34,4 +34,4 @@ python scripts/moderate_native_reports.py hide REPORT_UUID
 python scripts/moderate_native_reports.py remove REPORT_UUID
 ```
 
-The moderation CLI rejects the web and catalog-writer roles, PostgreSQL superusers, unmarked test databases, and databases other than `tuxgg` or marked `tuxgg_test`.
+The moderation CLI rejects the web and catalog-writer roles, PostgreSQL superusers, unmarked test databases, and databases outside VapourDB or its marked test database. Existing legacy TuxGG database identities remain supported during local cutover.

@@ -2,6 +2,7 @@
 
 import pg from 'pg';
 import { loadLocalEnv, slugify } from './games-catalog.mjs';
+import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 
 loadLocalEnv();
 
@@ -56,11 +57,29 @@ try {
 		throw new Error(
 			`${options.apply ? 'IMPORTER_DATABASE_URL' : 'DATABASE_URL'} is not configured.`
 		);
-	client = new pg.Client({ connectionString, application_name: 'tuxgg-steam-catalog-discovery' });
+	client = new pg.Client({
+		connectionString,
+		application_name: 'vapourdb-steam-catalog-discovery'
+	});
 	await client.connect();
-	const identity = await client.query('SELECT current_database() AS database');
-	if (!['tuxgg', 'tuxgg_test'].includes(identity.rows[0]?.database))
+	const connection = await client.query(
+		'SELECT current_database() AS database, current_user AS role'
+	);
+	const databaseName = connection.rows[0]?.database;
+	const databaseIdentity = identityForDatabase(databaseName);
+	const testIdentity = testIdentityForDatabase(databaseName);
+	const expectedRole = options.apply
+		? databaseIdentity?.roles.importer
+		: databaseIdentity?.roles.web;
+	if (!databaseIdentity || connection.rows[0]?.role !== expectedRole)
 		throw new Error('Refusing to update an unrecognized database.');
+	if (testIdentity) {
+		const marker = await client
+			.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)
+			.catch(() => ({ rows: [] }));
+		if (marker.rows[0]?.marker !== testIdentity.markerValue)
+			throw new Error('Refusing to update a test database without its disposable safety marker.');
+	}
 
 	let cursor = 0;
 	let fetched = 0;

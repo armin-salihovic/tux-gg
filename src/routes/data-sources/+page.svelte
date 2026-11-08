@@ -6,7 +6,7 @@
 		{
 			title: 'Preserved games catalog',
 			paragraphs: [
-				'TuxGG preserves the existing Steam AppIDs, titles, slugs, artwork URLs, full metadata JSON, and creation and update timestamps in its games catalog. The complete table is exported as a PostgreSQL archive and UTF-8 CSV before schema cleanup.',
+				'VapourDB preserves the existing Steam AppIDs, titles, slugs, artwork URLs, full metadata JSON, and creation and update timestamps in its games catalog. The complete table is exported as a PostgreSQL archive and UTF-8 CSV before schema cleanup.',
 				'The CSV restore uses AppID upserts and recursively merges metadata so fields from older imports remain available.'
 			]
 		},
@@ -18,9 +18,9 @@
 			]
 		},
 		{
-			title: 'TuxGG community reports',
+			title: 'VapourDB community reports',
 			paragraphs: [
-				'Compatibility reports are submitted by signed-in TuxGG users. Pending reports remain private; published reports show their author and the submitted setup details. TuxGG reports are separate from Steam store metadata.'
+				'Compatibility reports are submitted by signed-in VapourDB users. Pending reports remain private; published reports show their author and the submitted setup details. VapourDB reports are separate from Steam store metadata.'
 			]
 		},
 		{
@@ -35,7 +35,7 @@
 <ContentPage
 	eyebrow="Provenance"
 	title="Data sources and attribution"
-	intro="TuxGG preserves its existing games catalog, refreshes selected details from Steam, and hosts its own player reports."
+	intro="VapourDB preserves its existing games catalog, refreshes selected details from Steam, and hosts its own player reports."
 	{sections}
 	canonical={data.canonical}
 />

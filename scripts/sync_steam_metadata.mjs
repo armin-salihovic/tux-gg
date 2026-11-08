@@ -2,6 +2,7 @@
 
 import pg from 'pg';
 import { loadLocalEnv, MERGE_METADATA_FUNCTION, slugify } from './games-catalog.mjs';
+import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 import {
 	fetchSteamDetails,
 	planSteamMetadataSync,
@@ -93,11 +94,26 @@ async function main() {
 			throw new Error(
 				`${options.dryRun ? 'DATABASE_URL' : 'IMPORTER_DATABASE_URL'} is not configured.`
 			);
-		client = new pg.Client({ connectionString, application_name: 'tuxgg-steam-metadata-sync' });
+		client = new pg.Client({ connectionString, application_name: 'vapourdb-steam-metadata-sync' });
 		await client.connect();
-		const identity = await client.query('SELECT current_database() AS database');
-		if (!['tuxgg', 'tuxgg_test'].includes(identity.rows[0]?.database))
+		const connection = await client.query(
+			'SELECT current_database() AS database, current_user AS role'
+		);
+		const databaseName = connection.rows[0]?.database;
+		const databaseIdentity = identityForDatabase(databaseName);
+		const testIdentity = testIdentityForDatabase(databaseName);
+		const expectedRole = options.dryRun
+			? databaseIdentity?.roles.web
+			: databaseIdentity?.roles.importer;
+		if (!databaseIdentity || connection.rows[0]?.role !== expectedRole)
 			throw new Error('Refusing to sync against an unrecognized database.');
+		if (testIdentity) {
+			const marker = await client
+				.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)
+				.catch(() => ({ rows: [] }));
+			if (marker.rows[0]?.marker !== testIdentity.markerValue)
+				throw new Error('Refusing to sync a test database without its disposable safety marker.');
+		}
 		let games;
 		const now = Date.now();
 		const cutoff = new Date(now - STEAM_METADATA_TTL_MS).toISOString();
@@ -161,7 +177,7 @@ async function main() {
 					   slug = COALESCE(NULLIF(public.games.slug, ''), EXCLUDED.slug),
 					   artwork_url = COALESCE(NULLIF(EXCLUDED.artwork_url, ''), public.games.artwork_url),
 					   header_image_url = COALESCE(NULLIF(EXCLUDED.header_image_url, ''), public.games.header_image_url),
-					   metadata = pg_temp.tuxgg_merge_metadata(public.games.metadata, EXCLUDED.metadata),
+					   metadata = pg_temp.vapourdb_merge_metadata(public.games.metadata, EXCLUDED.metadata),
 					   updated_at = now()`,
 					[
 						game.app_id,

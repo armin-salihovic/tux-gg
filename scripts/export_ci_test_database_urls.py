@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set CI database URLs to the restricted runtime roles on tuxgg_test."""
+"""Set CI database URLs to the restricted runtime roles on vapourdb_test."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from urllib.parse import urlsplit
 
 from setup_database import read_env_file, url_for_database
 
-EXPECTED_DATABASE = "tuxgg"
-TEST_DATABASE = "tuxgg_test"
+EXPECTED_DATABASE = "vapourdb"
+TEST_DATABASE = "vapourdb_test"
 ROLE_URLS = {
-    "DATABASE_URL": "tuxgg_web",
-    "IMPORTER_DATABASE_URL": "tuxgg_importer",
-    "MIGRATION_DATABASE_URL": "tuxgg_migrator",
+    "DATABASE_URL": "vapourdb_web",
+    "IMPORTER_DATABASE_URL": "vapourdb_importer",
+    "MIGRATION_DATABASE_URL": "vapourdb_migrator",
 }
 
 
@@ -41,7 +41,7 @@ def main() -> int:
             for key, value in urls.items():
                 print(f"::add-mask::{value}")
                 stream.write(f"{key}={value}\n")
-        print("Configured tuxgg_test migrations and runtime access with the dedicated TuxGG roles.")
+        print("Configured vapourdb_test migrations and runtime access with the dedicated VapourDB roles.")
         return 0
     except Exception as exc:
         print(f"CI test database role setup failed: {type(exc).__name__}.", file=sys.stderr)

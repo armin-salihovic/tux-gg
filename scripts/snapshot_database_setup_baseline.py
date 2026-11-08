@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-TEST_DATABASES = ("tuxgg", "unrelated_app")
+TEST_DATABASES = ("vapourdb", "unrelated_app")
 
 
 def require_ci() -> None:

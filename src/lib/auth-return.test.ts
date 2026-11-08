@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateSameOriginReturnTo } from './auth-return.js';
 
 describe('Steam login return destination', () => {
-	const origin = 'https://tuxgg.example';
+	const origin = 'https://vapourdb.example';
 
 	it('preserves a valid app-relative path and query', () => {
 		expect(

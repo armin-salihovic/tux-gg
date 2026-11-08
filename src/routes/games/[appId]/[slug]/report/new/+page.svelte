@@ -49,7 +49,7 @@
 </script>
 
 <svelte:head>
-	<title>Write a report for {data.game.title} | TuxGG</title>
+	<title>Write a report for {data.game.title} | VapourDB</title>
 	<meta name="robots" content="noindex,follow" />
 </svelte:head>
 

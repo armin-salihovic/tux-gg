@@ -44,8 +44,8 @@
 <svelte:head>
 	<title
 		>{data.available && data.game
-			? `${data.game.title} Linux Compatibility | TuxGG`
-			: `Game ${data.appId} | TuxGG`}</title
+			? `${data.game.title} Linux Compatibility | VapourDB`
+			: `Game ${data.appId} | VapourDB`}</title
 	>
 	<meta
 		name="description"
@@ -59,15 +59,15 @@
 	{/if}
 	{#if data.available && data.game}
 		<meta property="og:type" content="website" />
-		<meta property="og:title" content={`${data.game.title} Linux Compatibility | TuxGG`} />
+		<meta property="og:title" content={`${data.game.title} Linux Compatibility | VapourDB`} />
 		<meta property="og:description" content={data.description} />
 		<meta property="og:url" content={data.canonical} />
 		<meta property="og:image" content={data.ogImage} />
 		<meta property="og:image:type" content="image/png" />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
-		<meta property="og:image:alt" content="TuxGG Linux and Steam Deck game compatibility" />
-		<meta name="twitter:title" content={`${data.game.title} Linux Compatibility | TuxGG`} />
+		<meta property="og:image:alt" content="VapourDB Linux and Steam Deck game compatibility" />
+		<meta name="twitter:title" content={`${data.game.title} Linux Compatibility | VapourDB`} />
 		<meta name="twitter:description" content={data.description} />
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:image" content={data.ogImage} />
@@ -112,7 +112,7 @@
 						{data.game.title}
 					</h1>
 					<p class="mt-5 text-sm text-slate-300">
-						{data.game.reportCount.toLocaleString()} published TuxGG {data.game.reportCount === 1 ? 'report' : 'reports'}
+						{data.game.reportCount.toLocaleString()} published VapourDB {data.game.reportCount === 1 ? 'report' : 'reports'}
 						<span class="px-1.5 text-slate-600">·</span>
 						Works: <strong class="text-mint">{data.game.yesCount}</strong>
 						<span class="px-1.5 text-slate-600">·</span>
@@ -146,7 +146,7 @@
 			<div>
 				<p class="eyebrow !text-lime">Share your experience</p>
 				<h2 class="mt-1 text-lg font-bold text-white">Played this game on Linux or Steam Deck?</h2>
-				<p class="mt-1 max-w-2xl text-sm leading-6 text-slate-300">Help other players by sharing how it runs. TuxGG community reports are reviewed before they are published.</p>
+				<p class="mt-1 max-w-2xl text-sm leading-6 text-slate-300">Help other players by sharing how it runs. VapourDB community reports are reviewed before they are published.</p>
 			</div>
 			<a class="mt-4 inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-mint px-5 py-3 text-sm font-extrabold text-ink hover:bg-lime sm:mt-0" href={`${gamePath}/report/new`}>Write a Report</a>
 		</div>
@@ -156,13 +156,13 @@
 		<div>
 			<div class="flex flex-wrap items-end justify-between gap-3">
 				<div>
-					<p class="eyebrow">TuxGG Community Reports</p>
+					<p class="eyebrow">VapourDB Community Reports</p>
 					<h2 class="mt-2 text-2xl font-extrabold text-white">Player-submitted reports</h2>
 				</div>
 				{#if data.nativeReportData}<span class="text-xs text-muted">{data.nativeReportData.total.toLocaleString()} published</span>{/if}
 			</div>
 			{#if !data.nativeReportData}
-				<div class="mt-5 rounded-2xl border border-amber-200/20 bg-amber-200/[0.05] p-5 text-sm text-amber-100">TuxGG community reports are temporarily unavailable.</div>
+				<div class="mt-5 rounded-2xl border border-amber-200/20 bg-amber-200/[0.05] p-5 text-sm text-amber-100">VapourDB community reports are temporarily unavailable.</div>
 			{:else if data.nativeReportData.reports.length}
 				<div class="mt-5 grid gap-4">
 					{#each data.nativeReportData.reports as report (report.id)}
@@ -191,14 +191,14 @@
 					{/each}
 				</div>
 				{#if data.nativeReportData.pageCount > 1}
-					<nav class="mt-5 flex items-center justify-between gap-3" aria-label="TuxGG community report pages">
+					<nav class="mt-5 flex items-center justify-between gap-3" aria-label="VapourDB community report pages">
 						{#if data.nativeReportData.page > 1}<a class="rounded-xl border border-line px-4 py-2 text-sm text-white hover:border-mint/40" href={pageHref(data.nativeReportData.page - 1)}>← Previous</a>{:else}<span></span>{/if}
 						<span class="text-xs text-muted">Page {data.nativeReportData.page} of {data.nativeReportData.pageCount}</span>
 						{#if data.nativeReportData.page < data.nativeReportData.pageCount}<a class="rounded-xl border border-line px-4 py-2 text-sm text-white hover:border-mint/40" href={pageHref(data.nativeReportData.page + 1)}>Next →</a>{:else}<span></span>{/if}
 					</nav>
 				{/if}
 			{:else}
-				<p class="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 text-sm text-muted">No TuxGG community reports match these filters yet.</p>
+				<p class="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 text-sm text-muted">No VapourDB community reports match these filters yet.</p>
 			{/if}
 		</div>
 		<aside>

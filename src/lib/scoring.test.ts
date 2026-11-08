@@ -7,7 +7,7 @@ import {
 	tierForEvidence
 } from './scoring.js';
 
-describe('TuxGG native compatibility scoring', () => {
+describe('VapourDB native compatibility scoring', () => {
 	const now = new Date('2026-01-01T00:00:00.000Z');
 	const report = (verdict: 'yes' | 'no', daysAgo = 0) => ({
 		verdict,

@@ -13,7 +13,7 @@
 </script>
 
 <svelte:head
-	><title>Devices | TuxGG</title><meta name="robots" content="noindex,follow" /></svelte:head
+	><title>Devices | VapourDB</title><meta name="robots" content="noindex,follow" /></svelte:head
 >
 
 <section class="container-shell max-w-4xl py-10 sm:py-14">

@@ -1,6 +1,6 @@
 # Saved devices
 
-Steam-authenticated users can save up to ten Linux PCs and Steam Decks in **Settings → Devices**. Windows, macOS, and systems whose operating system cannot be confirmed are rejected. TuxGG does not attest that pasted text is authentic; it strictly parses Steam System Information and derives the stored hardware from the submitted text on the server.
+Steam-authenticated users can save up to ten Linux PCs and Steam Decks in **Settings → Devices**. Windows, macOS, and systems whose operating system cannot be confirmed are rejected. VapourDB does not attest that pasted text is authentic; it strictly parses Steam System Information and derives the stored hardware from the submitted text on the server.
 
 ## Add or refresh a device
 
@@ -8,7 +8,7 @@ Open Steam's **Help → System Information**, copy the complete output, enter a 
 
 The parser requires Steam section structure, an identified Linux/SteamOS environment, and CPU and GPU identification. Linux is accepted through explicit Linux kernel information or credible Linux distribution names; the distribution list is not a platform whitelist. Steam Deck classification requires SteamOS, Valve manufacturer information, and a Deck model or APU indicator, including LCD and OLED models. Generic SteamOS PCs stay classified as Linux desktops. Hardware values are never accepted from separate client form fields.
 
-The original text is sent to TuxGG's server for validation; production connections use HTTPS. It is processed transiently and is not stored in the database, application logs, or analytics. TuxGG stores the device name and parsed specifications. Device records remain private to their owner. This parsing is not cryptographic hardware verification.
+The original text is sent to VapourDB's server for validation; production connections use HTTPS. It is processed transiently and is not stored in the database, application logs, or analytics. VapourDB stores the device name and parsed specifications. Device records remain private to their owner. This parsing is not cryptographic hardware verification.
 
 Existing devices created before server validation are retained and shown with **Reimport required**. They cannot be selected for new reports until the user imports supported Steam System Information. The device name can be kept or changed during reimport. No provenance is fabricated for existing records, and no device is deleted automatically.
 
@@ -22,4 +22,4 @@ The web role receives CRUD access to a user's device records through account-sco
 
 ## Tests
 
-Unit and browser checks cover strict parser cases, Windows rejection, reimport provenance, ownership, mandatory report devices, immutable snapshots, and moderation restrictions. PostgreSQL integration tests require the explicitly marked `tuxgg_test` database; they never run fixture cleanup against the normal `tuxgg` database.
+Unit and browser checks cover strict parser cases, Windows rejection, reimport provenance, ownership, mandatory report devices, immutable snapshots, and moderation restrictions. PostgreSQL integration tests require the explicitly marked `vapourdb_test` database. Legacy `tuxgg_test` markers remain supported for existing test setups, but tests never run fixture cleanup against the normal development database.

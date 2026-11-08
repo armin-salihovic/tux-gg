@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only inspection of the local PostgreSQL server and the TuxGG target database."""
+"""Read-only inspection of the local PostgreSQL server and the VapourDB target database."""
 
 from __future__ import annotations
 
@@ -29,9 +29,21 @@ def main() -> int:
 		import psycopg
 		from psycopg.rows import dict_row
 
-		admin_url = os.environ.get("PGADMIN_URL") or env_values().get("PGADMIN_URL")
+		values = env_values()
+		admin_url = os.environ.get("PGADMIN_URL") or values.get("PGADMIN_URL")
 		if not admin_url:
 			raise RuntimeError("PGADMIN_URL is not configured in the private environment.")
+		migration_url = os.environ.get("MIGRATION_DATABASE_URL") or values.get("MIGRATION_DATABASE_URL")
+		if not migration_url:
+			migration_url = os.environ.get("DATABASE_URL") or values.get("DATABASE_URL")
+		database = urlsplit(migration_url).path.rstrip("/").split("/")[-1] if migration_url else "vapourdb"
+		identities = {
+			"vapourdb": ("vapourdb_web", "vapourdb_importer", "vapourdb_migrator"),
+			"tuxgg": ("tuxgg_web", "tuxgg_importer", "tuxgg_migrator"),
+		}
+		if database not in identities:
+			raise RuntimeError("The configured application database name is not recognized.")
+		roles = identities[database]
 		result: dict[str, object] = {}
 		with psycopg.connect(admin_url, autocommit=True, row_factory=dict_row) as conn:
 			conn.execute("SET default_transaction_read_only = on")
@@ -42,17 +54,18 @@ def main() -> int:
 			).fetchone()
 			result["target_database"] = conn.execute(
 				"SELECT d.datname, pg_get_userbyid(d.datdba) AS owner, d.datallowconn AS accepts_connections "
-				"FROM pg_database d WHERE d.datname = 'tuxgg'"
+				"FROM pg_database d WHERE d.datname = %s",
+				(database,),
 			).fetchone()
 			result["project_roles"] = conn.execute(
 				"SELECT rolname, rolsuper AS is_superuser, rolcreatedb AS can_create_database, "
 				"rolcreaterole AS can_create_roles, rolcanlogin AS can_login "
-				"FROM pg_roles WHERE rolname IN ('tuxgg_web', 'tuxgg_importer', 'tuxgg_migrator') "
-				"ORDER BY rolname"
+				"FROM pg_roles WHERE rolname = ANY(%s) ORDER BY rolname",
+				(list(roles),),
 			).fetchall()
 		if result["target_database"]:
 			parts = urlsplit(admin_url)
-			target_url = urlunsplit((parts.scheme, parts.netloc, "/tuxgg", parts.query, ""))
+			target_url = urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, ""))
 			with psycopg.connect(target_url, autocommit=True, row_factory=dict_row) as conn:
 				conn.execute("SET default_transaction_read_only = on")
 				result["target_objects"] = conn.execute(

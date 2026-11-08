@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head
-	><title>Edit {data.device.name} | TuxGG</title><meta
+	><title>Edit {data.device.name} | VapourDB</title><meta
 		name="robots"
 		content="noindex,follow"
 	/></svelte:head

@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { createHash, randomInt } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createHash, randomInt } from 'node:crypto';
+import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import { loadLocalEnv, parseGamesCsv } from './games-catalog.mjs';
+import { verifyGamesBackup } from './verify_games_backup.mjs';
+import { DATABASE_IDENTITIES } from './database-identifiers.mjs';
+import { requireDatabaseRoleUrl } from './database-safety.mjs';
 
 loadLocalEnv();
 
@@ -19,12 +22,19 @@ function run(command, args, env) {
 		env,
 		windowsHide: true
 	});
-	if (result.status !== 0) {
+	if (result.status !== 0)
 		throw new Error(
 			`${path.basename(command)} failed (${result.status ?? 'signal'}). ${result.stderr.slice(-2000)}`
 		);
-	}
 	return result.stdout;
+}
+
+function requireTestUrl(raw, variable, role) {
+	const { url, database } = requireDatabaseRoleUrl(raw, variable, role, true);
+	const identity = DATABASE_IDENTITIES.vapourdb;
+	if (database !== identity.test)
+		throw new Error(`${variable} must use ${role} on the marked ${identity.test} database.`);
+	return url;
 }
 
 async function sha256(filePath) {
@@ -35,31 +45,29 @@ async function sha256(filePath) {
 
 async function main() {
 	const localEnv = dotenv.parse(await readFile('.env', 'utf8').catch(() => ''));
-	const sourceUrl =
-		process.env.GAMES_BACKUP_DATABASE_URL ||
-		localEnv.MIGRATION_DATABASE_URL ||
-		process.env.MIGRATION_DATABASE_URL;
-	const adminUrl = process.env.GAMES_BACKUP_VERIFY_ADMIN_URL || process.env.PGADMIN_URL;
-	const importerUrl = process.env.IMPORTER_DATABASE_URL;
-	const testAdminUrl = process.env.TEST_DATABASE_URL;
-	if (!sourceUrl || !adminUrl || !importerUrl || !testAdminUrl) {
+	const sourceUrl = process.env.MIGRATION_DATABASE_URL || localEnv.MIGRATION_DATABASE_URL;
+	const importerUrl = process.env.IMPORTER_DATABASE_URL || localEnv.IMPORTER_DATABASE_URL;
+	const testAdminUrl = process.env.TEST_DATABASE_URL || localEnv.TEST_DATABASE_URL;
+	const adminUrl = process.env.PGADMIN_URL || localEnv.PGADMIN_URL;
+	const source = requireTestUrl(
+		sourceUrl,
+		'MIGRATION_DATABASE_URL',
+		DATABASE_IDENTITIES.vapourdb.roles.migrator
+	);
+	const target = requireTestUrl(
+		importerUrl,
+		'IMPORTER_DATABASE_URL',
+		DATABASE_IDENTITIES.vapourdb.roles.importer
+	);
+	const disposableAdmin = requireTestUrl(testAdminUrl, 'TEST_DATABASE_URL', 'postgres');
+	if (!adminUrl || new URL(adminUrl).pathname.replace(/^\//, '') !== 'postgres')
 		throw new Error(
-			'Backup integration tests require the disposable CI PostgreSQL URLs and importer role.'
+			'PGADMIN_URL must be the PostgreSQL maintenance connection for the disposable CI server.'
 		);
-	}
-	const importerIdentity = new URL(importerUrl);
-	if (
-		importerIdentity.username !== 'tuxgg_importer' ||
-		importerIdentity.pathname.replace(/^\//, '') !== 'tuxgg_test'
-	) {
-		throw new Error(
-			'IMPORTER_DATABASE_URL must use tuxgg_importer on the disposable tuxgg_test database.'
-		);
-	}
-	const workDir = await mkdtemp(path.join(os.tmpdir(), 'tuxgg-backup-test-'));
-	const source = new pg.Client({ connectionString: sourceUrl });
-	const target = new pg.Client({ connectionString: importerUrl });
-	const testAdmin = new pg.Client({ connectionString: testAdminUrl });
+	const workDir = await mkdtemp(path.join(os.tmpdir(), 'vapourdb-backup-test-'));
+	const sourceClient = new pg.Client({ connectionString: source.toString() });
+	const targetClient = new pg.Client({ connectionString: target.toString() });
+	const testAdmin = new pg.Client({ connectionString: disposableAdmin.toString() });
 	const appIdPrefix = '999999999';
 	const appIdA = `${appIdPrefix}${randomInt(100_000_000, 1_000_000_000)}`;
 	let appIdB = `${appIdPrefix}${randomInt(100_000_000, 1_000_000_000)}`;
@@ -70,24 +78,49 @@ async function main() {
 		steam: { note: 'café, 東京, "quoted" text\nsecond line', nested: { enabled: true } },
 		custom: ['preserve', null, 3]
 	};
+	let markedTestDatabaseVerified = false;
+	let fixtureMayExist = false;
 	try {
-		await source.connect();
-		const sourceIdentity = await source.query(
-			'SELECT current_database() AS database FROM pg_catalog.pg_database WHERE datname = current_database()'
+		await sourceClient.connect();
+		await targetClient.connect();
+		await testAdmin.connect();
+		const sourceIdentity = await sourceClient.query(
+			'SELECT current_database() AS database, current_user AS role'
 		);
-		assert.equal(sourceIdentity.rows[0]?.database, 'tuxgg');
-		const sourceFixtureCheck = await source.query(
-			'SELECT app_id FROM public.games WHERE app_id = ANY($1::text[])',
+		assert.deepEqual(sourceIdentity.rows[0], {
+			database: DATABASE_IDENTITIES.vapourdb.test,
+			role: DATABASE_IDENTITIES.vapourdb.roles.migrator
+		});
+		const targetIdentity = await targetClient.query(
+			'SELECT current_database() AS database, current_user AS role'
+		);
+		assert.deepEqual(targetIdentity.rows[0], {
+			database: DATABASE_IDENTITIES.vapourdb.test,
+			role: DATABASE_IDENTITIES.vapourdb.roles.importer
+		});
+		const adminIdentity = await testAdmin.query(
+			'SELECT current_database() AS database, current_user AS role'
+		);
+		assert.deepEqual(adminIdentity.rows[0], {
+			database: DATABASE_IDENTITIES.vapourdb.test,
+			role: 'postgres'
+		});
+		const marker = await testAdmin.query(
+			`SELECT marker FROM public.${DATABASE_IDENTITIES.vapourdb.markerTable} WHERE id = 1`
+		);
+		assert.equal(marker.rows[0]?.marker, DATABASE_IDENTITIES.vapourdb.markerValue);
+		markedTestDatabaseVerified = true;
+
+		const existingFixture = await sourceClient.query(
+			' SELECT app_id FROM public.games WHERE app_id = ANY($1::text[])',
 			[[appIdA, appIdB]]
 		);
-		assert.equal(sourceFixtureCheck.rowCount, 0, 'Generated source fixture AppIDs must be unused.');
-		await source.query(
+		assert.equal(existingFixture.rowCount, 0, 'Generated fixture AppIDs must be unused.');
+		fixtureMayExist = true;
+		await sourceClient.query(
 			`INSERT INTO public.games (app_id, title, slug, artwork_url, header_image_url, metadata, created_at, updated_at)
 			 VALUES ($1, $2, $3, NULL, NULL, $4::jsonb, $5, $6),
-			        ($7, NULL, $8, NULL, 'https://example.invalid/header.jpg', '{}'::jsonb, $5, $6)
-			 ON CONFLICT (app_id) DO UPDATE SET title = EXCLUDED.title, slug = EXCLUDED.slug,
-			   artwork_url = EXCLUDED.artwork_url, header_image_url = EXCLUDED.header_image_url,
-			   metadata = EXCLUDED.metadata, created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at`,
+			        ($7, NULL, $8, NULL, 'https://example.invalid/header.jpg', '{}'::jsonb, $5, $6)`,
 			[
 				appIdA,
 				'Backup fixture, "quoted" café 東京\nsecond line',
@@ -99,40 +132,26 @@ async function main() {
 				'backup-null-title'
 			]
 		);
-		await target.connect();
-		const targetIdentity = await target.query(
-			'SELECT current_database() AS database, current_user AS role'
-		);
-		assert.equal(targetIdentity.rows[0]?.database, 'tuxgg_test');
-		assert.equal(targetIdentity.rows[0]?.role, 'tuxgg_importer');
-		await testAdmin.connect();
-		const adminIdentity = await testAdmin.query('SELECT current_database() AS database');
-		assert.equal(adminIdentity.rows[0]?.database, 'tuxgg_test');
-		const marker = await testAdmin.query(
-			'SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
-		);
-		assert.equal(marker.rows[0]?.marker, 'tuxgg_disposable_test_database_v1');
-		const targetFixtureCheck = await target.query(
-			'SELECT app_id FROM public.games WHERE app_id = ANY($1::text[])',
-			[[appIdA, appIdB]]
-		);
-		assert.equal(targetFixtureCheck.rowCount, 0, 'Generated target fixture AppIDs must be unused.');
 
 		const backupDir = path.join(workDir, 'backup');
 		const env = {
 			...process.env,
-			GAMES_BACKUP_DATABASE_URL: sourceUrl,
+			GAMES_BACKUP_DATABASE_URL: source.toString(),
 			GAMES_BACKUP_VERIFY_ADMIN_URL: adminUrl,
-			TUXGG_BACKUP_DIR: backupDir
+			VAPOURDB_BACKUP_DIR: backupDir
 		};
 		const output = run(process.execPath, ['scripts/backup_games.mjs'], env);
 		assert.match(output, /Games backup verified successfully\./);
 		const stamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-		const csvPath = path.join(backupDir, `tuxgg-games-${stamp}.csv`);
-		const dumpPath = path.join(backupDir, `tuxgg-games-${stamp}.dump`);
+		const csvPath = path.join(backupDir, `vapourdb-games-${stamp}.csv`);
+		const dumpPath = path.join(backupDir, `vapourdb-games-${stamp}.dump`);
+		const manifestPath = path.join(backupDir, `vapourdb-games-${stamp}.manifest.json`);
 		assert.ok((await stat(csvPath)).size > 0);
 		assert.ok((await stat(dumpPath)).size > 0);
 		const csv = parseGamesCsv(csvPath);
+		const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+		assert.equal(manifest.format, 'vapourdb-games-backup-v1');
+		assert.equal(manifest.database, DATABASE_IDENTITIES.vapourdb.test);
 		const fixture = csv.filter((row) => [appIdA, appIdB].includes(row.app_id));
 		assert.equal(fixture.length, 2);
 		const fixtureA = fixture.find((row) => row.app_id === appIdA);
@@ -146,33 +165,62 @@ async function main() {
 		assert.equal(Date.parse(fixtureA.updated_at), Date.parse(updatedAt));
 		assert.equal(fixtureB.title, null);
 		assert.equal(fixtureB.artwork_url, null);
-		assert.equal(await sha256(csvPath), output.match(/CSV SHA-256: ([a-f0-9]{64})/)?.[1]);
-		assert.equal(await sha256(dumpPath), output.match(/Archive SHA-256: ([a-f0-9]{64})/)?.[1]);
+		assert.equal(await sha256(csvPath), manifest.csvSha256);
+		assert.equal(await sha256(dumpPath), manifest.archiveSha256);
+		assert.equal((await verifyGamesBackup(csvPath)).games.length, csv.length);
+
+		const legacyCsvPath = path.join(backupDir, `tuxgg-games-${stamp}.csv`);
+		const legacyDumpPath = path.join(backupDir, `tuxgg-games-${stamp}.dump`);
+		const legacyManifestPath = path.join(backupDir, `tuxgg-games-${stamp}.manifest.json`);
+		await copyFile(csvPath, legacyCsvPath);
+		await copyFile(dumpPath, legacyDumpPath);
+		await writeFile(
+			legacyManifestPath,
+			JSON.stringify(
+				{
+					...manifest,
+					format: 'tuxgg-games-backup-v1',
+					database: 'tuxgg_test',
+					csvFile: path.basename(legacyCsvPath),
+					archiveFile: path.basename(legacyDumpPath)
+				},
+				null,
+				2
+			),
+			{ mode: 0o600 }
+		);
+		const legacyBackup = await verifyGamesBackup(legacyCsvPath);
+		assert.equal(legacyBackup.games.length, csv.length);
+		assert.equal(legacyBackup.csvHash, await sha256(legacyCsvPath));
+		assert.equal(legacyBackup.archiveHash, await sha256(legacyDumpPath));
 
 		const countBefore = Number(
-			(await target.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
+			(await targetClient.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
 		);
-		const overlapCount = Number(
-			(
-				await target.query(
-					'SELECT count(*)::int AS count FROM public.games WHERE app_id = ANY($1::text[])',
-					[csv.map((row) => row.app_id)]
-				)
-			).rows[0].count
+		assert.equal(
+			Number(
+				(
+					await targetClient.query(
+						'SELECT count(*)::int AS count FROM public.games WHERE app_id = ANY($1::text[])',
+						[[appIdA, appIdB]]
+					)
+				).rows[0].count
+			),
+			2
 		);
-		const restoreEnv = { ...env, IMPORTER_DATABASE_URL: importerUrl };
+		const restoreEnv = { ...env, IMPORTER_DATABASE_URL: target.toString() };
 		run(process.execPath, ['scripts/restore_games.mjs', csvPath], restoreEnv);
 		const countAfterFirst = Number(
-			(await target.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
+			(await targetClient.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
 		);
-		run(process.execPath, ['scripts/restore_games.mjs', csvPath], restoreEnv);
+		run(process.execPath, ['scripts/restore_games.mjs', legacyCsvPath], restoreEnv);
 		const countAfterSecond = Number(
-			(await target.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
+			(await targetClient.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
 		);
-		assert.equal(countAfterFirst, countBefore + csv.length - overlapCount);
+		assert.equal(countAfterFirst, countBefore);
 		assert.equal(countAfterSecond, countAfterFirst);
-		const restored = await target.query(
-			'SELECT app_id, title, artwork_url, metadata, created_at, updated_at FROM public.games WHERE app_id = ANY($1::text[]) ORDER BY app_id',
+		const restored = await targetClient.query(
+			' SELECT app_id, title, artwork_url, metadata, created_at, updated_at FROM public.games WHERE app_id = ANY($1::text[]) ORDER BY app_id',
 			[[appIdA, appIdB]]
 		);
 		assert.equal(restored.rows.length, 2);
@@ -192,32 +240,17 @@ async function main() {
 		await writeFile(duplicateCsv, `${header}\n${row}\n${row}\n`, 'utf8');
 		assert.throws(() => parseGamesCsv(duplicateCsv), /duplicate AppID/);
 
-		const refusalEnv = {
-			...env,
-			GAMES_BACKUP_DATABASE_URL: testAdminUrl,
-			TUXGG_BACKUP_DIR: path.join(workDir, 'refusal')
-		};
-		const refusal = spawnSync(process.execPath, ['scripts/backup_games.mjs'], {
-			cwd: process.cwd(),
-			encoding: 'utf8',
-			env: refusalEnv,
-			windowsHide: true
-		});
-		assert.notEqual(refusal.status, 0);
-		assert.match(refusal.stderr, /must connect to database tuxgg/);
 		console.log(
-			`Backup integration passed: ${csv.length} CSV rows, custom archive restore, CSV idempotency, JSON/timestamps, Unicode/escaping/NULLs, duplicate rejection, and unexpected-database refusal. SHA-256 ${await sha256(csvPath)} ${await sha256(dumpPath)}.`
+			`Backup integration passed in marked ${DATABASE_IDENTITIES.vapourdb.test}: ${csv.length} CSV rows, new and legacy manifest checksums, custom archive restore, idempotent CSV restores, JSON/timestamps, Unicode/escaping/NULLs, and duplicate rejection.`
 		);
 	} finally {
-		await source
-			.query('DELETE FROM public.games WHERE app_id = ANY($1::text[])', [[appIdA, appIdB]])
-			.catch(() => {});
-		await testAdmin
-			.query('DELETE FROM public.games WHERE app_id = ANY($1::text[])', [[appIdA, appIdB]])
-			.catch(() => {});
+		if (markedTestDatabaseVerified && fixtureMayExist)
+			await sourceClient
+				.query('DELETE FROM public.games WHERE app_id = ANY($1::text[])', [[appIdA, appIdB]])
+				.catch(() => {});
 		await Promise.all([
-			source.end().catch(() => {}),
-			target.end().catch(() => {}),
+			sourceClient.end().catch(() => {}),
+			targetClient.end().catch(() => {}),
 			testAdmin.end().catch(() => {})
 		]);
 		await rm(workDir, { recursive: true, force: true });

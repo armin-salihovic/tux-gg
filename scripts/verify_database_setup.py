@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify database setup touched only TuxGG and applied least-privilege grants."""
+"""Verify database setup touched only VapourDB and applied least-privilege grants."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def assert_runtime_privileges(url: str, role: str, expected: dict[str, bool]) ->
 
     with psycopg.connect(url) as conn, conn.cursor() as cur:
         cur.execute("SELECT current_database(), current_user")
-        if cur.fetchone() != ("tuxgg", role):
+        if cur.fetchone() != ("vapourdb", role):
             raise RuntimeError(f"{role} did not connect to the expected database and role.")
         for expression, wanted in expected.items():
             cur.execute(f"SELECT {expression}")
@@ -80,35 +80,35 @@ def main() -> int:
                 if snapshot_database(conn) != baseline[name]:
                     raise RuntimeError(f"Database setup changed ownership or privileges in {name}.")
 
-        with psycopg.connect(database_url(admin_url, "tuxgg")) as conn, conn.cursor() as cur:
-            if snapshot_database(conn) == baseline["tuxgg"]:
-                raise RuntimeError("TuxGG setup did not apply its database-specific ACL changes.")
+        with psycopg.connect(database_url(admin_url, "vapourdb")) as conn, conn.cursor() as cur:
+            if snapshot_database(conn) == baseline["vapourdb"]:
+                raise RuntimeError("VapourDB setup did not apply its database-specific ACL changes.")
             cur.execute(
-                "SELECT has_schema_privilege('tuxgg_web', 'public', 'CREATE'), "
-                "has_schema_privilege('tuxgg_importer', 'public', 'CREATE'), "
-                "has_schema_privilege('tuxgg_migrator', 'public', 'CREATE'), "
-                "has_database_privilege('tuxgg_web', 'tuxgg', 'CREATE'), "
-                "has_database_privilege('tuxgg_importer', 'tuxgg', 'CREATE'), "
-                "has_database_privilege('tuxgg_migrator', 'tuxgg', 'CREATE')"
+                "SELECT has_schema_privilege('vapourdb_web', 'public', 'CREATE'), "
+                "has_schema_privilege('vapourdb_importer', 'public', 'CREATE'), "
+                "has_schema_privilege('vapourdb_migrator', 'public', 'CREATE'), "
+                "has_database_privilege('vapourdb_web', 'vapourdb', 'CREATE'), "
+                "has_database_privilege('vapourdb_importer', 'vapourdb', 'CREATE'), "
+                "has_database_privilege('vapourdb_migrator', 'vapourdb', 'CREATE')"
             )
             if cur.fetchone() != (False, False, True, False, False, True):
-                raise RuntimeError("Unexpected TuxGG schema or migration-role privileges.")
+                raise RuntimeError("Unexpected VapourDB schema or migration-role privileges.")
             cur.execute(
-                "SELECT has_table_privilege('tuxgg_migrator', 'public.user', 'SELECT'), "
-                "has_table_privilege('tuxgg_migrator', 'public.user', 'UPDATE')"
+                "SELECT has_table_privilege('vapourdb_migrator', 'public.user', 'SELECT'), "
+                "has_table_privilege('vapourdb_migrator', 'public.user', 'UPDATE')"
             )
             if cur.fetchone() != (True, True):
                 raise RuntimeError(
                     "The auth table owner must retain SELECT and UPDATE for foreign-key checks."
                 )
-            cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'tuxgg'")
-            if cur.fetchone()[0] in ("tuxgg_web", "tuxgg_importer"):
-                raise RuntimeError("A runtime role owns the TuxGG database.")
+            cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'vapourdb'")
+            if cur.fetchone()[0] in ("vapourdb_web", "vapourdb_importer"):
+                raise RuntimeError("A runtime role owns the VapourDB database.")
 
         env = read_env_file()
         assert_runtime_privileges(
             env["DATABASE_URL"],
-            "tuxgg_web",
+            "vapourdb_web",
             {
                 "has_table_privilege(current_user, 'public.games', 'SELECT')": True,
                 "has_table_privilege(current_user, 'public.user', 'UPDATE')": True,
@@ -129,7 +129,7 @@ def main() -> int:
         )
         assert_runtime_privileges(
             env["IMPORTER_DATABASE_URL"],
-            "tuxgg_importer",
+            "vapourdb_importer",
             {
                 "has_table_privilege(current_user, 'public.games', 'INSERT')": True,
                 "has_table_privilege(current_user, 'public.games', 'SELECT')": True,
@@ -137,7 +137,7 @@ def main() -> int:
                 "has_table_privilege(current_user, 'public.user_devices', 'SELECT')": False,
             },
         )
-        print("Only TuxGG privileges changed; web and importer grants match their access maps.")
+        print("Only VapourDB privileges changed; web and importer grants match their access maps.")
         return 0
     except Exception as exc:
         print(f"Database setup verification failed: {type(exc).__name__}.", file=sys.stderr)

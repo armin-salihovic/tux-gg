@@ -1,4 +1,4 @@
-# TuxGG architecture
+# VapourDB architecture
 
 ## Runtime
 
@@ -10,7 +10,7 @@
 ## Routes
 
 - `/` and `/games`: Steam game catalog overview, title/AppID search, sorting, and pagination.
-- `/games/[appId]/[slug]`: Steam metadata and TuxGG's published player reports.
+- `/games/[appId]/[slug]`: Steam metadata and VapourDB's published player reports.
 - `/games/[appId]/[slug]/report/new`, `/my-reports`, and `/users/[username]`: account and contribution pages.
 - `/settings` and `/settings/devices`: profile and private Linux/Steam Deck device records.
 - `/about`, `/methodology`, `/data-sources`, `/privacy`, `/terms`, `/community-rules`, and `/contact`: service and data documentation.
@@ -23,7 +23,7 @@
 - `user_devices`: private saved Linux PC and Steam Deck hardware.
 - `native_reports`: user-authored reports linked to a game and an author, with pending/published moderation state and optional device snapshot.
 
-Native reports retain foreign keys to `games` and `user`. The web role can read games and reports, insert only approved native report columns, manage user devices and Better Auth records, and cannot moderate or delete native reports. `tuxgg_importer` can upsert games only and has no authentication-table access. `tuxgg_migrator` owns schema objects and runs migrations.
+Native reports retain foreign keys to `games` and `user`. The web role can read games and reports, insert only approved native report columns, manage user devices and Better Auth records, and cannot moderate or delete native reports. `vapourdb_importer` can upsert games only and has no authentication-table access. `vapourdb_migrator` owns schema objects and runs migrations. Legacy `tuxgg_*` roles remain supported for an existing local configuration until its verified cutover.
 
 ## Catalog flow
 

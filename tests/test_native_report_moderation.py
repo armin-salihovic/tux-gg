@@ -16,8 +16,8 @@ def operator_connection():
     url = os.environ.get("MIGRATION_DATABASE_URL")
     if not url:
         pytest.skip("MIGRATION_DATABASE_URL is not configured for the disposable database.")
-    if psycopg.conninfo.conninfo_to_dict(url).get("dbname") != "tuxgg_test":
-        pytest.fail("Native report moderation integration tests require tuxgg_test.")
+    if psycopg.conninfo.conninfo_to_dict(url).get("dbname") != "vapourdb_test":
+        pytest.fail("Native report moderation integration tests require vapourdb_test.")
     conn = psycopg.connect(url)
     conn.execute("BEGIN")
     try:

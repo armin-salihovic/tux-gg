@@ -24,7 +24,7 @@ function makeEvent(path: string, params: Record<string, string> = {}) {
 	return {
 		headers,
 		event: {
-			url: new URL(path, 'https://tuxgg.example'),
+			url: new URL(path, 'https://vapourdb.example'),
 			params,
 			setHeaders: (next: Record<string, string>) => Object.assign(headers, next)
 		}

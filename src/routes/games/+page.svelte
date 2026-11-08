@@ -10,33 +10,41 @@
 		if (page > 1) params.set('page', String(page));
 		return `/games${params.size ? `?${params}` : ''}`;
 	}
+	const ogImage = $derived(new URL('/og-default.png', data.canonical).toString());
 </script>
 
 <svelte:head>
-	<title>{data.q ? `Search ${data.q} | TuxGG` : 'Browse Steam games | TuxGG'}</title>
+	<title>{data.q ? `Search ${data.q} | VapourDB` : 'Browse Steam games | VapourDB'}</title>
 	<meta
 		name="description"
-		content="Browse Steam games and read Linux and Steam Deck compatibility reports from TuxGG players."
+		content="Browse Steam games and read Linux and Steam Deck compatibility reports from VapourDB players."
 	/>
 	<link rel="canonical" href={data.canonical} />
 	<meta property="og:type" content="website" />
 	<meta
 		property="og:title"
-		content={data.q ? `Search ${data.q} | TuxGG` : 'Browse Steam games | TuxGG'}
+		content={data.q ? `Search ${data.q} | VapourDB` : 'Browse Steam games | VapourDB'}
 	/>
 	<meta
 		property="og:description"
-		content="Browse Steam games and read Linux and Steam Deck compatibility reports from TuxGG players."
+		content="Browse Steam games and read Linux and Steam Deck compatibility reports from VapourDB players."
 	/>
 	<meta property="og:url" content={data.canonical} />
-	<meta name="twitter:card" content="summary" />
+	<meta property="og:image" content={ogImage} />
+	<meta property="og:image:alt" content="VapourDB Linux and Steam Deck compatibility" />
+	<meta property="og:image:type" content="image/png" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:image" content={ogImage} />
+	<meta name="twitter:image:alt" content="VapourDB Linux and Steam Deck compatibility" />
 	<meta
 		name="twitter:title"
-		content={data.q ? `Search ${data.q} | TuxGG` : 'Browse Linux-compatible games | TuxGG'}
+		content={data.q ? `Search ${data.q} | VapourDB` : 'Browse Linux-compatible games | VapourDB'}
 	/>
 	<meta
 		name="twitter:description"
-		content="Browse Steam games and read Linux and Steam Deck compatibility reports from TuxGG players."
+		content="Browse Steam games and read Linux and Steam Deck compatibility reports from VapourDB players."
 	/>
 	{#if data.filtered}<meta name="robots" content="noindex,follow" />{/if}
 </svelte:head>

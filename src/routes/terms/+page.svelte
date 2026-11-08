@@ -6,7 +6,7 @@
 		{
 			title: 'Compatibility information',
 			paragraphs: [
-				'TuxGG provides community-reported compatibility information for reference. Results can be incomplete, outdated, mistaken, or specific to particular hardware and software. TuxGG does not guarantee that a game will run or meet a performance target.'
+				'VapourDB provides community-reported compatibility information for reference. Results can be incomplete, outdated, mistaken, or specific to particular hardware and software. VapourDB does not guarantee that a game will run or meet a performance target.'
 			]
 		},
 		{
@@ -33,7 +33,7 @@
 <ContentPage
 	eyebrow="Terms"
 	title="Terms of use"
-	intro="These development terms describe the current scope and limitations of the TuxGG site."
+	intro="These development terms describe the current scope and limitations of the VapourDB site."
 	{sections}
 	canonical={data.canonical}
 />

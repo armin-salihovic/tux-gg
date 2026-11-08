@@ -45,7 +45,7 @@ describe('response cache policy', () => {
 	it('does not rewrite cache policy for static assets', () => {
 		for (const pathname of [
 			'/_app/immutable/entry/start.js',
-			'/assets/tuxgg.css',
+			'/assets/vapourdb.css',
 			'/static/images/fallback.webp',
 			'/favicon.svg'
 		]) {

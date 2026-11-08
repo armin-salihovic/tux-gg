@@ -8,7 +8,7 @@ import {
 } from './steam-openid.js';
 
 const steamId = '76561198012345678';
-const returnTo = 'https://tuxgg.example/api/auth/steam/callback?flow=abc&state=xyz';
+const returnTo = 'https://vapourdb.example/api/auth/steam/callback?flow=abc&state=xyz';
 
 function responseNonce(ageMs = 0) {
 	return `${new Date(Date.now() - ageMs).toISOString().replace(/\.\d{3}Z$/, 'Z')}testnonce`;
@@ -36,12 +36,12 @@ function validSteamResponse() {
 
 describe('Steam OpenID', () => {
 	it('builds a Steam OpenID 2.0 request with the configured realm and return URL', () => {
-		const url = new URL(buildSteamOpenIDUrl('https://tuxgg.example/', returnTo));
+		const url = new URL(buildSteamOpenIDUrl('https://vapourdb.example/', returnTo));
 		expect(url.origin).toBe('https://steamcommunity.com');
 		expect(url.pathname).toBe('/openid/login');
 		expect(url.searchParams.get('openid.ns')).toBe(STEAM_OPENID_NAMESPACE);
 		expect(url.searchParams.get('openid.mode')).toBe('checkid_setup');
-		expect(url.searchParams.get('openid.realm')).toBe('https://tuxgg.example/');
+		expect(url.searchParams.get('openid.realm')).toBe('https://vapourdb.example/');
 		expect(url.searchParams.get('openid.return_to')).toBe(returnTo);
 	});
 

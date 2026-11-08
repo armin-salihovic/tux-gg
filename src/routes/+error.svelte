@@ -4,7 +4,7 @@
 </script>
 
 <svelte:head>
-	<title>{isNotFound ? 'Page not found' : 'Page unavailable'} | TuxGG</title>
+	<title>{isNotFound ? 'Page not found' : 'Page unavailable'} | VapourDB</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 

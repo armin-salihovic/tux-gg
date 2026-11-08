@@ -13,9 +13,9 @@ const enabled = process.env.AUTH_INTEGRATION_TESTS === '1';
 const databaseUrl = process.env.DATABASE_URL;
 const baseURL = process.env.BETTER_AUTH_URL ?? 'https://localhost:5173';
 const siteURL = process.env.PUBLIC_SITE_URL ?? 'https://localhost:5173';
-const runId = `tuxgg-steam-test-${Date.now()}`;
+const runId = `vapourdb-steam-test-${Date.now()}`;
 const steamIdBlock = Math.floor(Math.random() * 10_000);
-const steamIds = [0, 1, 2, 3].map(
+const steamIds = [0, 1, 2, 3, 4].map(
 	(offset) => `7656119${String((steamIdBlock + offset) % 10_000).padStart(4, '0')}000001`
 );
 let nonceSequence = 0;
@@ -35,7 +35,7 @@ function adminTestDatabaseUrl(): string {
 	if (url.pathname.replace(/^\//, '') !== 'postgres') {
 		throw new Error('Auth integration test administrator URL must connect to postgres.');
 	}
-	url.pathname = '/tuxgg_test';
+	url.pathname = '/vapourdb_test';
 	return url.toString();
 }
 
@@ -219,18 +219,18 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		if (!process.env.STEAM_API_KEY) {
 			throw new Error('Auth integration tests require a non-secret STEAM_API_KEY test value.');
 		}
-		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'tuxgg_test') {
-			throw new Error('Auth integration tests require DATABASE_URL to target tuxgg_test.');
+		if (!databaseUrl || new URL(databaseUrl).pathname.replace(/^\//, '') !== 'vapourdb_test') {
+			throw new Error('Auth integration tests require DATABASE_URL to target vapourdb_test.');
 		}
 		const pool = getPool();
 		const identity = await pool.query('SELECT current_database() AS database');
-		if (identity.rows[0]?.database !== 'tuxgg_test') {
-			throw new Error('Auth integration tests refused a database other than tuxgg_test.');
+		if (identity.rows[0]?.database !== 'vapourdb_test') {
+			throw new Error('Auth integration tests refused a database other than vapourdb_test.');
 		}
 		const marker = await pool.query(
-			'SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
+			'SELECT marker FROM public.vapourdb_test_safety_marker WHERE id = 1'
 		);
-		if (marker.rows[0]?.marker !== 'tuxgg_disposable_test_database_v1') {
+		if (marker.rows[0]?.marker !== 'vapourdb_disposable_test_database_v1') {
 			throw new Error('Auth integration tests require the disposable database marker.');
 		}
 		const permissions = await pool.query(
@@ -260,7 +260,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 				"has_table_privilege(current_user, 'public.native_reports', 'DELETE') AS can_delete_native_reports"
 		);
 		expect(permissions.rows[0]).toEqual({
-			role: 'tuxgg_web',
+			role: 'vapourdb_web',
 			schema_usage: true,
 			can_read_games: true,
 			can_read_auth_users: true,
@@ -349,8 +349,8 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 
 	afterAll(async () => {
 		vi.stubGlobal('fetch', originalFetch);
-		// The suite runs as tuxgg_web, which intentionally cannot delete users. Its randomized
-		// identities remain isolated in the disposable tuxgg_test database.
+		// The suite runs as vapourdb_web, which intentionally cannot delete users. Its randomized
+		// identities remain isolated in the disposable vapourdb_test database.
 		await closeDatabase();
 	});
 
@@ -361,7 +361,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		expect(response.headers.get('location')).toBe(`${baseURL}/settings`);
 		expect(process.env.NODE_ENV).toBe('production');
 		const cookie = sessionCookie(response);
-		expect(cookie).toMatch(/(?:tuxgg|__Secure-tuxgg)\.session_token=/);
+		expect(cookie).toMatch(/(?:vapourdb|__Secure-vapourdb)\.session_token=/);
 		const sessionCookies = setCookieHeaders(response).filter((value) =>
 			value.includes('session_token=')
 		);
@@ -490,10 +490,10 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		});
 		try {
 			const marker = await admin.query(
-				'SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
+				'SELECT marker FROM public.vapourdb_test_safety_marker WHERE id = 1'
 			);
-			expect(marker.rows[0]?.marker).toBe('tuxgg_disposable_test_database_v1');
-			await admin.query('REVOKE INSERT ON TABLE public.verification FROM tuxgg_web');
+			expect(marker.rows[0]?.marker).toBe('vapourdb_disposable_test_database_v1');
+			await admin.query('REVOKE INSERT ON TABLE public.verification FROM vapourdb_web');
 			try {
 				const response = await auth.handler(
 					new Request(`${baseURL}/api/auth/steam/login`, {
@@ -509,7 +509,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 				expect(response.status).toBe(503);
 				expect(await response.json()).toEqual({ error: 'auth_unavailable' });
 			} finally {
-				await admin.query('GRANT INSERT ON TABLE public.verification TO tuxgg_web');
+				await admin.query('GRANT INSERT ON TABLE public.verification TO vapourdb_web');
 			}
 		} finally {
 			await admin.end();
@@ -528,8 +528,36 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		expect(accounts).toHaveLength(1);
 	});
 
-	it('does not merge an existing user by the internal placeholder email', async () => {
+	it('requires the VapourDB session cookie while retaining account and session rows', async () => {
 		const steamId = steamIds[2]!;
+		const flow = await beginLogin();
+		const response = await finishLogin(flow, { steamId });
+		const cookie = sessionCookie(response);
+		const userSession = await getSession(cookie);
+		const sessionId = userSession?.session?.id;
+		const userId = String(userSession?.user?.id);
+		expect(cookie).toMatch(/(?:vapourdb|__Secure-vapourdb)\.session_token=/);
+		expect(sessionId).toBeTruthy();
+
+		const legacyCookie = cookie.replace(/^(?:__Secure-)?vapourdb\./, (prefix) =>
+			prefix.replace('vapourdb', 'tuxgg')
+		);
+		expect(legacyCookie).not.toBe(cookie);
+		expect(await getSession(legacyCookie)).toBeNull();
+		const account = await getDb()
+			.select({ userId: authAccount.userId })
+			.from(authAccount)
+			.where(eq(authAccount.accountId, steamId));
+		const sessions = await getDb()
+			.select({ id: authSession.id })
+			.from(authSession)
+			.where(eq(authSession.id, sessionId!));
+		expect(account).toEqual([{ userId }]);
+		expect(sessions).toHaveLength(1);
+	});
+
+	it('does not merge an existing user by the internal placeholder email', async () => {
+		const steamId = steamIds[4]!;
 		const email = `steam-${steamId}@steam.invalid`;
 		const username = `${runId.slice(-12)}-old`;
 		await getDb()
@@ -743,7 +771,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 		const { actions } = await import('../../routes/settings/+page.server.js');
 		const submitProfile = async (username: string) => {
 			const form = new FormData();
-			form.set('name', 'Updated TuxGG Display Name');
+			form.set('name', 'Updated VapourDB Display Name');
 			form.set('username', username);
 			const event = {
 				locals: {
@@ -766,7 +794,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			location: '/settings?saved=1'
 		});
 		const publicProfile = await getProfile(String(secondSession?.user?.username));
-		expect(publicProfile?.name).toBe('Updated TuxGG Display Name');
+		expect(publicProfile?.name).toBe('Updated VapourDB Display Name');
 	});
 
 	it('expires Better Auth sessions and logs out through Better Auth', async () => {

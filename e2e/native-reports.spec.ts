@@ -11,8 +11,8 @@ const operatorDatabaseName = operatorDatabaseUrl
 	: '';
 
 test.skip(
-	webDatabaseName !== 'tuxgg_test' || operatorDatabaseName !== 'tuxgg_test',
-	'Native report browser journey requires the disposable tuxgg_test database.'
+	webDatabaseName !== 'vapourdb_test' || operatorDatabaseName !== 'vapourdb_test',
+	'Native report browser journey requires the disposable vapourdb_test database.'
 );
 
 async function acceptDeleteConfirmation(page: Page, button: Locator) {
@@ -38,11 +38,11 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 	const web = new Pool({ connectionString: webDatabaseUrl });
 	try {
 		const identity = await web.query('SELECT current_database(), current_user');
-		expect(identity.rows[0]?.current_database).toBe('tuxgg_test');
+		expect(identity.rows[0]?.current_database).toBe('vapourdb_test');
 		const marker = await web.query(
-			'SELECT marker FROM public.tuxgg_test_safety_marker WHERE id = 1'
+			'SELECT marker FROM public.vapourdb_test_safety_marker WHERE id = 1'
 		);
-		expect(marker.rows[0]?.marker).toBe('tuxgg_disposable_test_database_v1');
+		expect(marker.rows[0]?.marker).toBe('vapourdb_disposable_test_database_v1');
 
 		const gamePath = '/games/440/team-fortress-2';
 		const formPath = `${gamePath}/report/new`;
@@ -81,7 +81,7 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		const securePrefix = process.env.NODE_ENV === 'production' ? '__Secure-' : '';
 		await page.context().addCookies([
 			{
-				name: `${securePrefix}tuxgg.session_token`,
+				name: `${securePrefix}vapourdb.session_token`,
 				value: encodeURIComponent(`${token}.${signature}`),
 				url: baseURL!
 			}

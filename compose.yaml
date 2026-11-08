@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    image: tuxgg:local
+    image: vapourdb:local
     restart: unless-stopped
     environment:
       NODE_ENV: production

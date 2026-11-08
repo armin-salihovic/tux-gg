@@ -24,9 +24,9 @@
 </script>
 
 <svelte:head
-	><title>Sign in | TuxGG</title><meta name="robots" content="noindex,follow" /><meta
+	><title>Sign in | VapourDB</title><meta name="robots" content="noindex,follow" /><meta
 		name="description"
-		content="Sign in securely with your Steam account to create or access your TuxGG profile."
+		content="Sign in securely with your Steam account to create or access your VapourDB profile."
 	/></svelte:head
 >
 
@@ -41,10 +41,10 @@
 				/>
 			</svg>
 		</div>
-		<p class="eyebrow mt-6">Your TuxGG account</p>
+		<p class="eyebrow mt-6">Your VapourDB account</p>
 		<h1 class="mt-2 text-3xl font-black tracking-tight text-white">Sign in through Steam</h1>
 		<p class="mt-3 text-sm leading-6 text-muted">
-			Sign in securely with your Steam account to create or access your TuxGG profile.
+			Sign in securely with your Steam account to create or access your VapourDB profile.
 		</p>
 		<button
 			class="mt-7 w-full rounded-xl bg-[#1b2838] px-5 py-3.5 font-extrabold text-white transition hover:bg-[#24374d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#66c0f4] disabled:cursor-wait disabled:opacity-60"

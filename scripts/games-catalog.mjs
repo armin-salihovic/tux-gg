@@ -136,7 +136,7 @@ export function slugify(value, appId) {
 }
 
 export const MERGE_METADATA_FUNCTION = `
-CREATE OR REPLACE FUNCTION pg_temp.tuxgg_merge_metadata(existing jsonb, incoming jsonb)
+CREATE OR REPLACE FUNCTION pg_temp.vapourdb_merge_metadata(existing jsonb, incoming jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 IMMUTABLE
@@ -166,7 +166,7 @@ BEGIN
 		END IF;
 		previous := result -> item.key;
 		IF jsonb_typeof(item.value) = 'object' THEN
-			merged := pg_temp.tuxgg_merge_metadata(previous, item.value);
+			merged := pg_temp.vapourdb_merge_metadata(previous, item.value);
 		ELSE
 			merged := item.value;
 		END IF;

@@ -18,7 +18,7 @@ export function isAuthConfigured(): boolean {
 
 function createAuth() {
 	return betterAuth({
-		appName: 'TuxGG',
+		appName: 'VapourDB',
 		baseURL: BETTER_AUTH_URL!,
 		secret: BETTER_AUTH_SECRET!,
 		database: drizzleAdapter(getDb(), {
@@ -45,7 +45,7 @@ function createAuth() {
 		},
 		advanced: {
 			useSecureCookies: NODE_ENV === 'production',
-			cookiePrefix: 'tuxgg'
+			cookiePrefix: 'vapourdb'
 		}
 	});
 }
