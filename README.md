@@ -55,7 +55,7 @@ Before catalog maintenance, create and verify a backup:
 pnpm db:backup:games
 ```
 
-The command writes a PostgreSQL custom archive, CSV, and SHA-256 manifest outside the repository. If the configured login has `CREATEDB`, it verifies the archive by restoring into a uniquely named disposable database and then removes only that database. Without `CREATEDB`, it reports the reduced verification level: CSV rows, AppIDs, checksums, and archive readability are checked, but a full archive restore is not claimed. Files use a `vapourdb-games-YYYYMMDD` or `tuxgg-games-YYYYMMDD` name matching the source database. The default directory is `%USERPROFILE%\.vapourdb-backups` on Windows or `~/.vapourdb-backups` elsewhere. Set `VAPOURDB_BACKUP_DIR` to choose another private external directory.
+The command writes a PostgreSQL custom archive, CSV, and SHA-256 manifest outside the repository. It reports `full-disposable-restore` when it restores into a uniquely named disposable database and checks row counts, AppIDs, and representative records. Otherwise it reports `archive-readable`: CSV rows and AppIDs, checksums, and archive readability are checked, but the archive itself has not been restored or independently checked. Files use a `vapourdb-games-YYYYMMDD` or `tuxgg-games-YYYYMMDD` name matching the source database. The default directory is `%USERPROFILE%\.vapourdb-backups` on Windows or `~/.vapourdb-backups` elsewhere. Set `VAPOURDB_BACKUP_DIR` to choose another private external directory.
 
 Restore an external catalog CSV after the schema is ready:
 

@@ -108,7 +108,7 @@ async function main() {
 			VAPOURDB_BACKUP_DIR: backupDir
 		};
 		const output = run(process.execPath, ['scripts/backup_games.mjs'], env);
-		assert.match(output, /Games backup verified successfully\./);
+		assert.match(output, /verification level: full-disposable-restore/);
 		const stamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
 		const csvPath = path.join(backupDir, `vapourdb-games-${stamp}.csv`);
 		const dumpPath = path.join(backupDir, `vapourdb-games-${stamp}.dump`);
@@ -119,6 +119,7 @@ async function main() {
 		const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 		assert.equal(manifest.format, 'vapourdb-games-backup-v1');
 		assert.equal(manifest.database, DATABASE_IDENTITIES.vapourdb.test);
+		assert.equal(manifest.verificationLevel, 'full-disposable-restore');
 		const fixture = csv.filter((row) => [appIdA, appIdB].includes(row.app_id));
 		assert.equal(fixture.length, 2);
 		const fixtureA = fixture.find((row) => row.app_id === appIdA);
@@ -134,29 +135,44 @@ async function main() {
 		assert.equal(fixtureB.artwork_url, null);
 		assert.equal(await sha256(csvPath), manifest.csvSha256);
 		assert.equal(await sha256(dumpPath), manifest.archiveSha256);
-		assert.equal((await verifyGamesBackup(csvPath)).games.length, csv.length);
+		const fullVerification = await verifyGamesBackup(csvPath);
+		assert.equal(fullVerification.games.length, csv.length);
+		assert.equal(fullVerification.verificationLevel, 'full-disposable-restore');
+
+		const reducedBackupDir = path.join(workDir, 'reduced-backup');
+		const reducedOutput = run(process.execPath, ['scripts/backup_games.mjs'], {
+			...env,
+			VAPOURDB_BACKUP_DIR: reducedBackupDir,
+			VAPOURDB_TEST_BACKUP_FORCE_REDUCED_VERIFICATION: '1'
+		});
+		assert.match(reducedOutput, /verification level: archive-readable/);
+		const reducedCsvPath = path.join(reducedBackupDir, `vapourdb-games-${stamp}.csv`);
+		const reducedManifest = JSON.parse(
+			await readFile(path.join(reducedBackupDir, `vapourdb-games-${stamp}.manifest.json`), 'utf8')
+		);
+		assert.equal(reducedManifest.verificationLevel, 'archive-readable');
+		assert.equal(reducedManifest.archiveRestoredRows, null);
+		assert.equal(reducedManifest.representativeRecordsCompared, null);
+		const reducedVerification = await verifyGamesBackup(reducedCsvPath);
+		assert.equal(reducedVerification.verificationLevel, 'archive-readable');
+		assert.equal(reducedVerification.games.length, csv.length);
 
 		const legacyCsvPath = path.join(backupDir, `tuxgg-games-${stamp}.csv`);
 		const legacyDumpPath = path.join(backupDir, `tuxgg-games-${stamp}.dump`);
 		const legacyManifestPath = path.join(backupDir, `tuxgg-games-${stamp}.manifest.json`);
 		await copyFile(csvPath, legacyCsvPath);
 		await copyFile(dumpPath, legacyDumpPath);
-		await writeFile(
-			legacyManifestPath,
-			JSON.stringify(
-				{
-					...manifest,
-					format: 'tuxgg-games-backup-v1',
-					database: 'tuxgg_test',
-					csvFile: path.basename(legacyCsvPath),
-					archiveFile: path.basename(legacyDumpPath)
-				},
-				null,
-				2
-			),
-			{ mode: 0o600 }
-		);
+		const legacyManifest = {
+			...manifest,
+			format: 'tuxgg-games-backup-v1',
+			database: 'tuxgg_test',
+			csvFile: path.basename(legacyCsvPath),
+			archiveFile: path.basename(legacyDumpPath)
+		};
+		delete legacyManifest.verificationLevel;
+		await writeFile(legacyManifestPath, JSON.stringify(legacyManifest, null, 2), { mode: 0o600 });
 		const legacyBackup = await verifyGamesBackup(legacyCsvPath);
+		assert.equal(legacyBackup.verificationLevel, 'full-disposable-restore');
 		assert.equal(legacyBackup.games.length, csv.length);
 		assert.equal(legacyBackup.csvHash, await sha256(legacyCsvPath));
 		assert.equal(legacyBackup.archiveHash, await sha256(legacyDumpPath));
@@ -214,7 +230,7 @@ async function main() {
 		assert.throws(() => parseGamesCsv(duplicateCsv), /duplicate AppID/);
 
 		console.log(
-			`Backup integration passed in marked ${DATABASE_IDENTITIES.vapourdb.test}: ${csv.length} CSV rows, new and legacy manifest checksums, custom archive restore, idempotent CSV restores, JSON/timestamps, Unicode/escaping/NULLs, and duplicate rejection.`
+			`Backup integration passed in marked ${DATABASE_IDENTITIES.vapourdb.test}: ${csv.length} CSV rows, full and reduced manifest round trips, legacy full-evidence compatibility, custom archive readability/restore, idempotent CSV restores, JSON/timestamps, Unicode/escaping/NULLs, and duplicate rejection.`
 		);
 	} finally {
 		if (markedTestDatabaseVerified && fixtureMayExist)

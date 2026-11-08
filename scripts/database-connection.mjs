@@ -54,7 +54,10 @@ export function resolveDatabaseUrl(operation, env) {
 		throw new Error('DB_PORT must be an integer from 1 to 65535.');
 	const database = source.DB_DATABASE;
 	const testIdentity = testIdentityForDatabase(database);
-	const explicitlyMarkedTestRun = source.VAPOURDB_TEST_DATABASE === '1' && Boolean(testIdentity);
+	const explicitlyMarkedTestRun =
+		source.GITHUB_ACTIONS === 'true' &&
+		source.VAPOURDB_TEST_DATABASE === '1' &&
+		Boolean(testIdentity);
 	if (database !== 'vapourdb' && !explicitlyMarkedTestRun && operation !== 'doctor')
 		throw new Error('DB_DATABASE must be exactly vapourdb for application commands.');
 	const options = {

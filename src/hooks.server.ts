@@ -4,8 +4,18 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import { getAuth, isAuthConfigured } from '#lib/server/auth.js';
 import { logAuthDiagnostic, logAuthRequestRejection } from '#lib/server/auth-diagnostics.js';
 import { applyResponseCachePolicy } from '#lib/server/cache-policy.js';
+import { assertRuntimeDatabaseTarget, verifyRuntimeDatabaseIdentity } from '#lib/server/db/db.js';
+import { DatabaseTargetIdentityError } from '#lib/server/db/database-target.js';
 
 export const handle: Handle = async ({ event, resolve }) => {
+	const hasDatabaseTarget = assertRuntimeDatabaseTarget();
+	if (!building && hasDatabaseTarget) {
+		try {
+			await verifyRuntimeDatabaseIdentity();
+		} catch (error) {
+			if (error instanceof DatabaseTargetIdentityError) throw error;
+		}
+	}
 	event.locals.user = null;
 	event.locals.session = null;
 	const secure = (response: Response) => {

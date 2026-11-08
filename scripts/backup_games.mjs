@@ -596,6 +596,18 @@ async function verifyMaintenanceIdentity(client) {
 	}
 }
 
+function isReducedVerificationTest(database) {
+	if (process.env.VAPOURDB_TEST_BACKUP_FORCE_REDUCED_VERIFICATION !== '1') return false;
+	if (
+		process.env.GITHUB_ACTIONS !== 'true' ||
+		process.env.VAPOURDB_TEST_DATABASE !== '1' ||
+		database !== 'vapourdb_test'
+	) {
+		throw new Error('Forced reduced backup verification is restricted to marked CI vapourdb_test.');
+	}
+	return true;
+}
+
 async function run() {
 	loadLocalEnv();
 	FAILURE.stage = 'connection setup';
@@ -650,6 +662,8 @@ async function run() {
 			'SELECT count(*)::bigint AS row_count, count(DISTINCT app_id)::bigint AS unique_app_ids FROM public.games'
 		);
 		const originalCount = Number(counts.rows[0].row_count);
+		if (!Number.isSafeInteger(originalCount) || originalCount < 0)
+			throw new Error('The source games row count is outside the supported integer range.');
 		if (counts.rows[0].row_count !== counts.rows[0].unique_app_ids)
 			throw new Error('The source games table contains duplicate AppIDs.');
 		const snapshotResult = await source.query('SELECT pg_export_snapshot() AS snapshot');
@@ -690,6 +704,10 @@ async function run() {
 		FAILURE.stage = 'disposable restore verification';
 		let restoreResult = null;
 		try {
+			if (isReducedVerificationTest(sourceIdentity.database))
+				throw Object.assign(new Error('CI test mode simulates missing CREATEDB.'), {
+					code: 'VDBTESTREDUCED'
+				});
 			maintenance = new pg.Client({
 				...databaseConnection.options,
 				database: 'postgres',
@@ -737,9 +755,15 @@ async function run() {
 			restoreResult = await compareRestoredData(sourceUrl, verifyDb, appIds, sourceSamples);
 		} catch (error) {
 			if (error?.code === 'VDBCOLLISION' || createdVerifyDb) throw error;
-			console.log(
-				'The configured login cannot create a disposable verification database; archive restore verification is reduced to archive readability, CSV checks, and checksums.'
-			);
+			if (error?.code === 'VDBTESTREDUCED') {
+				console.log(
+					'CI integration mode: simulating unavailable CREATEDB permission for the archive-readable verification path.'
+				);
+			} else {
+				console.log(
+					'The configured login cannot create a disposable verification database; archive restore verification is reduced to archive readability, CSV checks, and checksums.'
+				);
+			}
 			await maintenance?.end().catch(() => {});
 			maintenance = undefined;
 		}
@@ -812,12 +836,15 @@ async function run() {
 		await rm(workDir, { recursive: true, force: true }).catch(() => {});
 	}
 
-	console.log('Games backup verified successfully.');
+	const verificationLevel = resultSummary.restoreResult
+		? 'full-disposable-restore'
+		: 'archive-readable';
+	console.log(`Games backup completed with verification level: ${verificationLevel}.`);
 	console.log(`Source database: ${resultSummary.sourceDatabase}`);
 	console.log(`Original game records: ${resultSummary.originalCount}`);
 	console.log(`CSV records verified: ${resultSummary.csvCount}`);
 	console.log(`AppIDs preserved and unique: ${resultSummary.csvCount}`);
-	console.log('Custom archive readability: passed');
+	console.log('Custom archive list/readability check: passed');
 	if (resultSummary.restoreResult) {
 		console.log(
 			`Disposable database restore: passed (${resultSummary.restoreResult.rows} rows; ${resultSummary.restoreResult.representativeRecords} representative records compared)`
@@ -825,7 +852,7 @@ async function run() {
 		console.log('Representative JSON metadata and timestamps: preserved');
 	} else {
 		console.log(
-			'Full archive restore verification: unavailable; reduced verification level recorded in the manifest.'
+			'Archive restore verification: not performed; the archive was checked for readability and integrity, but was not independently restored.'
 		);
 	}
 	console.log(`CSV: ${resultSummary.csvPath} (${resultSummary.csvInfo.size} bytes)`);

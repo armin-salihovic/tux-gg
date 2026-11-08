@@ -39,6 +39,7 @@ def database_settings(
     selected_database = database or values.get("DB_DATABASE", "")
     permitted_test = (
         allow_test
+        and os.environ.get("GITHUB_ACTIONS") == "true"
         and os.environ.get("VAPOURDB_TEST_DATABASE") == "1"
         and selected_database == "vapourdb_test"
     )

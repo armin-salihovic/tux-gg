@@ -27,7 +27,7 @@ Native reports retain foreign keys to `games` and `user`. One configured Postgre
 
 ## Catalog flow
 
-`pnpm db:backup:games` exports the configured games table to a PostgreSQL archive and CSV outside the repository. It verifies CSV rows, AppIDs, checksums, and archive readability. When the configured account has `CREATEDB`, it also restores the archive in a uniquely named disposable database; otherwise it records the reduced verification level. `pnpm db:restore:games -- <csv>` restores rows with AppID-based upserts and recursive metadata merging.
+`pnpm db:backup:games` exports the configured games table to a PostgreSQL archive and CSV outside the repository. Its `full-disposable-restore` level means the archive was restored to a disposable database and row counts, AppIDs, and representative records matched. Its `archive-readable` level means CSV row/AppID checks, checksums, and archive readability passed, but the archive was not restored. The manifest verifier preserves that distinction. `pnpm db:restore:games -- <csv>` restores rows with AppID-based upserts and recursive metadata merging.
 
 `pnpm steam:sync` refreshes stale metadata for at most 10 games by default and 20 per run at most. Successful responses carry a 30-day `lastFetchedAt` cache timestamp. Requests are sequential, spaced at least two seconds apart, and use bounded retries. `--force` bypasses freshness checks. `--dry-run` reads the catalog to preview work and makes no Steam requests or database writes. `pnpm steam:discover` uses Steamworks `IStoreService/GetAppList` pages to find additional game AppIDs and names; it skips existing rows and does not request detailed metadata for every discovered game.
 

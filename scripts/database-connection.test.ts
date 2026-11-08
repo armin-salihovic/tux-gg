@@ -68,7 +68,8 @@ describe('shared database connection handling', () => {
 			DB_HOST: '127.0.0.1',
 			DB_PORT: '5432',
 			DB_USERNAME: 'postgres',
-			DB_PASSWORD: 'test'
+			DB_PASSWORD: 'test',
+			GITHUB_ACTIONS: 'false'
 		};
 		expect(() =>
 			resolveDatabaseUrl('migrate', { ...env, DB_DATABASE: 'tuxgg' } as NodeJS.ProcessEnv)
@@ -80,7 +81,8 @@ describe('shared database connection handling', () => {
 			resolveDatabaseUrl('migrate', {
 				...env,
 				DB_DATABASE: 'vapourdb_test',
-				VAPOURDB_TEST_DATABASE: '1'
+				VAPOURDB_TEST_DATABASE: '1',
+				GITHUB_ACTIONS: 'true'
 			} as NodeJS.ProcessEnv).summary.database
 		).toBe('vapourdb_test');
 	});
