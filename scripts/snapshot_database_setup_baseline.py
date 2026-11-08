@@ -66,9 +66,17 @@ def main() -> int:
                 raise RuntimeError("Expected the PostgreSQL maintenance database.")
             for name in TEST_DATABASES:
                 cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,))
-                if cur.fetchone() is not None:
+                exists = cur.fetchone() is not None
+                if name == "vapourdb":
+                    if not exists:
+                        raise RuntimeError("Expected the local single-role VapourDB database before the production grant check.")
+                    cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'vapourdb'")
+                    if cur.fetchone()[0] != "vapourdb_dev":
+                        raise RuntimeError("Expected the local CI database to be owned by vapourdb_dev before production setup.")
+                elif exists:
                     raise RuntimeError(f"Expected a fresh CI PostgreSQL service without {name}.")
-                cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+                else:
+                    cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
 
         with psycopg.connect(database_url(admin_url, "unrelated_app"), autocommit=True) as conn:
             with conn.cursor() as cur:

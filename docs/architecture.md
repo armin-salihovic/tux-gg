@@ -23,7 +23,7 @@
 - `user_devices`: private saved Linux PC and Steam Deck hardware.
 - `native_reports`: user-authored reports linked to a game and an author, with pending/published moderation state and optional device snapshot.
 
-Native reports retain foreign keys to `games` and `user`. The web role can read games and reports, insert only approved native report columns, manage user devices and Better Auth records, and cannot moderate or delete native reports. `vapourdb_importer` can upsert games only and has no authentication-table access. `vapourdb_migrator` owns schema objects and runs migrations. Legacy `tuxgg_*` roles remain supported for an existing local configuration until its verified cutover.
+Native reports retain foreign keys to `games` and `user`. The web role can read games and reports, insert only approved native report columns, manage user devices and Better Auth records, and cannot moderate or delete native reports. `vapourdb_importer` can upsert games only and has no authentication-table access. `vapourdb_migrator` owns schema objects and runs migrations. Local development uses a separate `vapourdb_dev` owner role; legacy `tuxgg_*` roles remain recognized for explicit legacy backup or operator workflows, while local write commands select only `vapourdb`.
 
 ## Catalog flow
 

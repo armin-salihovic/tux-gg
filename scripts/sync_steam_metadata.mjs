@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
-import pg from 'pg';
 import { loadLocalEnv, MERGE_METADATA_FUNCTION, slugify } from './games-catalog.mjs';
 import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
+import {
+	createDatabaseClient,
+	preflightDatabase,
+	resolveDatabaseUrl
+} from './database-connection.mjs';
 import {
 	fetchSteamDetails,
 	planSteamMetadataSync,
@@ -87,14 +91,12 @@ async function main() {
 	let client;
 	try {
 		const options = parseArgs(process.argv.slice(2));
-		const connectionString = options.dryRun
-			? process.env.DATABASE_URL
-			: process.env.IMPORTER_DATABASE_URL;
-		if (!connectionString)
-			throw new Error(
-				`${options.dryRun ? 'DATABASE_URL' : 'IMPORTER_DATABASE_URL'} is not configured.`
-			);
-		client = new pg.Client({ connectionString, application_name: 'vapourdb-steam-metadata-sync' });
+		const databaseConnection = resolveDatabaseUrl(options.dryRun ? 'steamRead' : 'steamWrite');
+		await preflightDatabase(databaseConnection, {
+			operation: options.dryRun ? 'steamRead' : 'steamWrite',
+			requireLocalOwner: false
+		});
+		client = createDatabaseClient(databaseConnection.raw, 'vapourdb-steam-metadata-sync');
 		await client.connect();
 		const connection = await client.query(
 			'SELECT current_database() AS database, current_user AS role'
@@ -102,9 +104,12 @@ async function main() {
 		const databaseName = connection.rows[0]?.database;
 		const databaseIdentity = identityForDatabase(databaseName);
 		const testIdentity = testIdentityForDatabase(databaseName);
-		const expectedRole = options.dryRun
-			? databaseIdentity?.roles.web
-			: databaseIdentity?.roles.importer;
+		const expectedRole =
+			databaseConnection.mode === 'development'
+				? databaseConnection.expectedRole
+				: options.dryRun
+					? databaseIdentity?.roles.web
+					: databaseIdentity?.roles.importer;
 		if (!databaseIdentity || connection.rows[0]?.role !== expectedRole)
 			throw new Error('Refusing to sync against an unrecognized database.');
 		if (testIdentity) {

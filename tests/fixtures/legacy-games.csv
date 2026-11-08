@@ -1,0 +1,4 @@
+app_id,title,slug,artwork_url,header_image_url,metadata,created_at,updated_at
+440,"Café ""Quoted"", 東京
+Second line",cafe-quoted-tokyo,https://cdn.example.invalid/440.jpg,\N,"{""steam"":{""note"":""line one\nline two"",""nested"":{""kept"":true}}}",2020-01-02T03:04:05.000Z,2024-06-07T08:09:10.000Z
+999123321,\N,steam-app-999123321,\N,\N,"{""custom"":[null,""café""]}",2019-03-04T05:06:07.000Z,2025-08-09T10:11:12.000Z

@@ -1,18 +1,13 @@
-import 'dotenv/config';
 import { defineConfig } from 'drizzle-kit';
+import { resolveDatabaseUrl, withMigrationTimeouts } from './scripts/database-connection.mjs';
 
-const databaseUrl = process.env.MIGRATION_DATABASE_URL;
-if (!databaseUrl) {
-	throw new Error(
-		'Set MIGRATION_DATABASE_URL to the dedicated VapourDB migration connection before running Drizzle Kit.'
-	);
-}
+const { raw } = resolveDatabaseUrl('migrate');
 
 export default defineConfig({
 	dialect: 'postgresql',
 	schema: './src/lib/server/db/schema.ts',
 	out: './drizzle',
-	dbCredentials: { url: databaseUrl },
+	dbCredentials: { url: withMigrationTimeouts(raw) },
 	strict: true,
 	verbose: true
 });

@@ -8,7 +8,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       ORIGIN: ${ORIGIN:-}
-      DATABASE_URL: ${DATABASE_URL_DOCKER:-${DATABASE_URL:?Set DATABASE_URL or DATABASE_URL_DOCKER}}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to an address reachable from the app container}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-}
       STEAM_API_KEY: ${STEAM_API_KEY:-}

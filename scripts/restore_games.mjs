@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
 import path from 'node:path';
-import pg from 'pg';
 import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
+import {
+	createDatabaseClient,
+	preflightDatabase,
+	resolveDatabaseUrl
+} from './database-connection.mjs';
 import {
 	GAME_COLUMNS,
 	loadLocalEnv,
@@ -17,16 +21,12 @@ if (!csvPath || process.argv.length > 3) {
 	process.exit(2);
 }
 
-const connectionString = process.env.IMPORTER_DATABASE_URL;
-if (!connectionString) {
-	console.error('IMPORTER_DATABASE_URL is not configured.');
-	process.exit(1);
-}
-
 let client;
 try {
 	const games = parseGamesCsv(path.resolve(csvPath));
-	client = new pg.Client({ connectionString, application_name: 'vapourdb-games-restore' });
+	const connection = resolveDatabaseUrl('restore');
+	await preflightDatabase(connection, { operation: 'restore', requireLocalOwner: false });
+	client = createDatabaseClient(connection.raw, 'vapourdb-games-restore');
 	await client.connect();
 	const identity = await client.query(
 		`SELECT current_database() AS database, current_user AS role,
@@ -45,8 +45,10 @@ try {
 	if (!appIdentity && !testIdentity && !restoreVerifyIdentity)
 		throw new Error('Refusing to import games into an unrecognized database.');
 	const expectedIdentity = appIdentity ?? testIdentity ?? restoreVerifyIdentity;
-	if (identity.rows[0]?.role !== expectedIdentity.roles.importer)
-		throw new Error('IMPORTER_DATABASE_URL must use the matching catalog-writer role.');
+	const expectedRole =
+		connection.mode === 'development' ? 'vapourdb_dev' : expectedIdentity.roles.importer;
+	if (identity.rows[0]?.role !== expectedRole)
+		throw new Error(`${connection.variable} must use the matching catalog-writer role.`);
 	if (testIdentity) {
 		const marker = await client
 			.query(`SELECT marker FROM public.${testIdentity.markerTable} WHERE id = 1`)

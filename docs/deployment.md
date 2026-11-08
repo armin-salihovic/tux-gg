@@ -2,11 +2,11 @@
 
 ## Database setup
 
-For a **new installation**, configure `PGADMIN_URL` to an administrator connection on PostgreSQL's `postgres` database, install Python dependencies, run `pnpm db:setup` once, and apply the current baseline with `pnpm db:migrate`. Restore the verified games CSV with `pnpm db:restore:games -- <games.csv>` before starting the app.
+For a **new production installation**, configure the web, importer, and migrator role URLs plus a protected `PGADMIN_URL`, install Python dependencies, run `pnpm db:setup:production`, then apply the baseline with `pnpm db:migrate`. Setup uses the supplied role credentials, does not rotate passwords, and does not rewrite `.env`. Restore the verified games CSV with `pnpm db:restore:games -- <games.csv>` before starting the app.
 
-The baseline is intended for an empty schema. `pnpm db:dev:reset -- --force` is refused. `pnpm db:dev:reset -- --initialize-empty` accepts only a verified local database with no application objects; it never drops or recreates existing data. Never run development setup or reset commands against production or staging. Production schema changes remain an explicit operator migration. See [database.md](database.md).
+The baseline is intended for an empty schema. Never run local development setup or reset commands against production or staging. Production schema changes remain an explicit operator migration. See [database.md](database.md).
 
-Run migrations with `vapourdb_migrator`; the web process receives only `DATABASE_URL`. Keep `IMPORTER_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and `PGADMIN_URL` in a host-side secret file or secret manager. Existing local `tuxgg_*` role URLs remain supported until a verified in-place identity migration is completed.
+Run migrations with `vapourdb_migrator`; the web process receives only `DATABASE_URL`. Keep `IMPORTER_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and `PGADMIN_URL` in a host-side secret file or secret manager. Local development instead uses one `DATABASE_URL` with the dedicated `vapourdb_dev` role.
 
 ## Application configuration
 
@@ -24,7 +24,7 @@ docker compose up -d
 docker compose ps
 ```
 
-The app listens on container port 3000 and checks `/healthz`, which also verifies database connectivity. Compose binds it to `127.0.0.1:3000` for a reverse proxy on the host. Terminate TLS at the proxy, forward the original host and protocol, and set `ORIGIN`, `PUBLIC_SITE_URL`, and `BETTER_AUTH_URL` to the public HTTPS origin. For a proxy in Docker, use a private Docker network instead of the host port mapping. `DATABASE_URL_DOCKER` can point to PostgreSQL as seen from the app container. Compose passes only the web credential and public application settings to the app.
+The app listens on container port 3000 and checks `/healthz`, which also verifies database connectivity. Compose binds it to `127.0.0.1:3000` for a reverse proxy on the host. Terminate TLS at the proxy, forward the original host and protocol, and set `ORIGIN`, `PUBLIC_SITE_URL`, and `BETTER_AUTH_URL` to the public HTTPS origin. For a proxy in Docker, use a private Docker network instead of the host port mapping. Set the single `DATABASE_URL` to an address reachable from the app container: a database service name on a shared Docker network or the published host gateway. Compose passes only the web credential and public application settings to the app.
 
 ## Operations
 

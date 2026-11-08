@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
+import { backupNaming } from './games-backup-naming.mjs';
 import { resolveBackupDirectory } from './backup-directory.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -562,7 +563,7 @@ async function sha256(filePath) {
 	return hash.digest('hex');
 }
 
-async function verifyDatabaseIdentity(client) {
+async function verifyDatabaseIdentity(client, sourceHost) {
 	const result = await client.query(
 		`SELECT current_database() AS database, current_user AS role,
 		        has_table_privilege(current_user, 'public.games', 'SELECT') AS can_read,
@@ -577,10 +578,13 @@ async function verifyDatabaseIdentity(client) {
 	const databaseIdentity = identityForDatabase(identity?.database);
 	const testIdentity = testIdentityForDatabase(identity?.database);
 	const expectedIdentity = databaseIdentity ?? testIdentity;
+	const localDeveloper = Boolean(
+		identity && identity.database === 'vapourdb' && identity.role === 'vapourdb_dev'
+	);
 	if (
 		!identity ||
 		!expectedIdentity ||
-		!Object.values(expectedIdentity.roles).includes(identity.role)
+		(!Object.values(expectedIdentity.roles).includes(identity.role) && !localDeveloper)
 	)
 		throw new Error(
 			'The source must use a VapourDB or legacy TuxGG application role and database.'
@@ -593,6 +597,15 @@ async function verifyDatabaseIdentity(client) {
 			throw new Error('Refusing a test-database backup without its disposable safety marker.');
 	}
 	if (!identity.can_read) throw new Error('DATABASE_URL must have SELECT access to public.games.');
+	if (
+		localDeveloper &&
+		(!['localhost', '127.0.0.1', '::1'].includes(sourceHost.toLowerCase()) ||
+			identity.is_superuser ||
+			identity.can_bypass_rls)
+	)
+		throw new Error(
+			'vapourdb_dev backup access requires a loopback URL and a non-administrator role.'
+		);
 	if (identity.row_security && !identity.is_superuser && !identity.can_bypass_rls) {
 		throw new Error(
 			'Row-level security is enabled on public.games; full-table export cannot be guaranteed with this role.'
@@ -626,9 +639,10 @@ async function run() {
 	);
 	const backupDir = await makeBackupDirectory();
 	const dateStamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-	const archivePath = path.join(backupDir, `vapourdb-games-${dateStamp}.dump`);
-	const csvPath = path.join(backupDir, `vapourdb-games-${dateStamp}.csv`);
-	const manifestPath = path.join(backupDir, `vapourdb-games-${dateStamp}.manifest.json`);
+	const naming = backupNaming(sourceUrl.database, dateStamp);
+	const archivePath = path.join(backupDir, naming.archive);
+	const csvPath = path.join(backupDir, naming.csv);
+	const manifestPath = path.join(backupDir, naming.manifest);
 	for (const target of [archivePath, csvPath, manifestPath]) {
 		try {
 			await stat(target);
@@ -643,11 +657,11 @@ async function run() {
 	const engine = chooseClientTools();
 	const workDir = path.join(
 		backupDir,
-		`.vapourdb-games-${process.pid}-${randomBytes(5).toString('hex')}`
+		`.${naming.brand}-games-${process.pid}-${randomBytes(5).toString('hex')}`
 	);
 	const passFile = path.join(workDir, 'pgpass');
-	const partialCsv = path.join(workDir, `vapourdb-games-${dateStamp}.csv.partial`);
-	const partialDump = path.join(workDir, `vapourdb-games-${dateStamp}.dump.partial`);
+	const partialCsv = path.join(workDir, `${naming.brand}-games-${dateStamp}.csv.partial`);
+	const partialDump = path.join(workDir, `${naming.brand}-games-${dateStamp}.dump.partial`);
 	const verifyDb = `vapourdb_games_verify_${dateStamp}_${randomBytes(4).toString('hex')}`;
 	let source;
 	let admin;
@@ -667,7 +681,7 @@ async function run() {
 		await source.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
 		await source.query("SET LOCAL TIME ZONE 'UTC'");
 		await source.query('SET LOCAL row_security = off');
-		const sourceIdentity = await verifyDatabaseIdentity(source);
+		const sourceIdentity = await verifyDatabaseIdentity(source, sourceUrl.host);
 		const counts = await source.query(
 			'SELECT count(*)::bigint AS row_count, count(DISTINCT app_id)::bigint AS unique_app_ids FROM public.games'
 		);
@@ -758,7 +772,7 @@ async function run() {
 			sha256(archivePath)
 		]);
 		const manifest = {
-			format: 'vapourdb-games-backup-v1',
+			format: naming.format,
 			verifiedAt: new Date().toISOString(),
 			database: sourceIdentity.database,
 			originalCount,

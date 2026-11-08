@@ -105,7 +105,7 @@ def main() -> int:
             if cur.fetchone()[0] in ("vapourdb_web", "vapourdb_importer"):
                 raise RuntimeError("A runtime role owns the VapourDB database.")
 
-        env = read_env_file()
+        env = {**read_env_file(), **os.environ}
         assert_runtime_privileges(
             env["DATABASE_URL"],
             "vapourdb_web",

@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
-import pg from 'pg';
 import { loadLocalEnv, slugify } from './games-catalog.mjs';
 import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
+import {
+	createDatabaseClient,
+	preflightDatabase,
+	resolveDatabaseUrl
+} from './database-connection.mjs';
 
 loadLocalEnv();
 
@@ -50,17 +54,12 @@ try {
 	const options = parseArgs(process.argv.slice(2));
 	const apiKey = process.env.STEAM_API_KEY;
 	if (!apiKey) throw new Error('STEAM_API_KEY is required for the Steam catalog service.');
-	const connectionString = options.apply
-		? process.env.IMPORTER_DATABASE_URL
-		: process.env.DATABASE_URL;
-	if (!connectionString)
-		throw new Error(
-			`${options.apply ? 'IMPORTER_DATABASE_URL' : 'DATABASE_URL'} is not configured.`
-		);
-	client = new pg.Client({
-		connectionString,
-		application_name: 'vapourdb-steam-catalog-discovery'
+	const databaseConnection = resolveDatabaseUrl(options.apply ? 'steamWrite' : 'steamRead');
+	await preflightDatabase(databaseConnection, {
+		operation: options.apply ? 'steamWrite' : 'steamRead',
+		requireLocalOwner: false
 	});
+	client = createDatabaseClient(databaseConnection.raw, 'vapourdb-steam-catalog-discovery');
 	await client.connect();
 	const connection = await client.query(
 		'SELECT current_database() AS database, current_user AS role'
@@ -68,9 +67,12 @@ try {
 	const databaseName = connection.rows[0]?.database;
 	const databaseIdentity = identityForDatabase(databaseName);
 	const testIdentity = testIdentityForDatabase(databaseName);
-	const expectedRole = options.apply
-		? databaseIdentity?.roles.importer
-		: databaseIdentity?.roles.web;
+	const expectedRole =
+		databaseConnection.mode === 'development'
+			? databaseConnection.expectedRole
+			: options.apply
+				? databaseIdentity?.roles.importer
+				: databaseIdentity?.roles.web;
 	if (!databaseIdentity || connection.rows[0]?.role !== expectedRole)
 		throw new Error('Refusing to update an unrecognized database.');
 	if (testIdentity) {
