@@ -4,6 +4,7 @@ import path from 'node:path';
 import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 import {
 	createDatabaseClient,
+	normalizePnpmArgs,
 	preflightDatabase,
 	resolveDatabaseUrl
 } from './database-connection.mjs';
@@ -15,8 +16,9 @@ import {
 } from './games-catalog.mjs';
 
 loadLocalEnv();
-const csvPath = process.argv[2];
-if (!csvPath || process.argv.length > 3) {
+const args = normalizePnpmArgs(process.argv.slice(2));
+const csvPath = args[0];
+if (!csvPath || args.length > 1) {
 	console.error('Usage: pnpm db:restore:games -- <games.csv>');
 	process.exit(2);
 }

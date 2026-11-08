@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { categorizeConnectionError, safeUrlSummary } from './database-connection.mjs';
+import {
+	categorizeConnectionError,
+	normalizePnpmArgs,
+	safeUrlSummary
+} from './database-connection.mjs';
 
 describe('shared database connection handling', () => {
+	it('removes pnpm’s forwarded argument separator before CLI parsing', () => {
+		expect(normalizePnpmArgs(['--', '--apply'])).toEqual(['--apply']);
+		expect(normalizePnpmArgs(['games.csv'])).toEqual(['games.csv']);
+	});
+
 	it('summarizes only host, port, database, and username', () => {
 		const summary = safeUrlSummary(
 			'postgresql://vapourdb_dev:must-not-appear@127.0.0.1:5544/vapourdb?sslmode=disable'

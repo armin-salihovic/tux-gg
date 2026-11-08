@@ -2,14 +2,16 @@
 
 import {
 	createDatabaseClient,
+	normalizePnpmArgs,
 	preflightDatabase,
 	resolveDatabaseUrl
 } from './database-connection.mjs';
 
 let expectedRows;
-for (let index = 0; index < process.argv.length; index += 1) {
-	if (process.argv[index] !== '--expect') continue;
-	expectedRows = Number(process.argv[index + 1]);
+const args = normalizePnpmArgs(process.argv.slice(2));
+for (let index = 0; index < args.length; index += 1) {
+	if (args[index] !== '--expect') continue;
+	expectedRows = Number(args[index + 1]);
 	if (!Number.isInteger(expectedRows) || expectedRows < 0) {
 		console.error('--expect requires a nonnegative row count.');
 		process.exit(2);

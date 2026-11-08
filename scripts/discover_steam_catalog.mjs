@@ -4,6 +4,7 @@ import { loadLocalEnv, slugify } from './games-catalog.mjs';
 import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 import {
 	createDatabaseClient,
+	normalizePnpmArgs,
 	preflightDatabase,
 	resolveDatabaseUrl
 } from './database-connection.mjs';
@@ -51,7 +52,7 @@ async function getPage(apiKey, cursor, count) {
 
 let client;
 try {
-	const options = parseArgs(process.argv.slice(2));
+	const options = parseArgs(normalizePnpmArgs(process.argv.slice(2)));
 	const apiKey = process.env.STEAM_API_KEY;
 	if (!apiKey) throw new Error('STEAM_API_KEY is required for the Steam catalog service.');
 	const databaseConnection = resolveDatabaseUrl(options.apply ? 'steamWrite' : 'steamRead');

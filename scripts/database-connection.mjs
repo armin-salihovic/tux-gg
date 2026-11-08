@@ -9,6 +9,10 @@ import {
 
 export const CONNECT_TIMEOUT_MS = 5000;
 
+export function normalizePnpmArgs(args) {
+	return args[0] === '--' ? args.slice(1) : args;
+}
+
 const OPERATION_URLS = Object.freeze({
 	migrate: { specialized: 'MIGRATION_DATABASE_URL', role: 'migrator' },
 	restore: { specialized: 'IMPORTER_DATABASE_URL', role: 'importer' },

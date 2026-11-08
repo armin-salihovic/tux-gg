@@ -36,6 +36,7 @@ export interface DatabaseIdentity {
 }
 
 export declare const CONNECT_TIMEOUT_MS: number;
+export declare function normalizePnpmArgs(args: string[]): string[];
 export declare function databaseMode(env?: NodeJS.ProcessEnv): DatabaseMode;
 export declare function safeUrlSummary(raw: string): DatabaseUrlSummary;
 export declare function resolveDatabaseUrl(

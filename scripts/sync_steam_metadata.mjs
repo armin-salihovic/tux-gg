@@ -4,6 +4,7 @@ import { loadLocalEnv, MERGE_METADATA_FUNCTION, slugify } from './games-catalog.
 import { identityForDatabase, testIdentityForDatabase } from './database-identifiers.mjs';
 import {
 	createDatabaseClient,
+	normalizePnpmArgs,
 	preflightDatabase,
 	resolveDatabaseUrl
 } from './database-connection.mjs';
@@ -12,7 +13,7 @@ import {
 	planSteamMetadataSync,
 	STEAM_METADATA_TTL_MS,
 	waitForSteamRequestSlot
-} from '../src/lib/server/steam-metadata.js';
+} from '../src/lib/server/steam-metadata.ts';
 
 loadLocalEnv();
 
@@ -90,7 +91,7 @@ function normalizeSteamDetails(data) {
 async function main() {
 	let client;
 	try {
-		const options = parseArgs(process.argv.slice(2));
+		const options = parseArgs(normalizePnpmArgs(process.argv.slice(2)));
 		const databaseConnection = resolveDatabaseUrl(options.dryRun ? 'steamRead' : 'steamWrite');
 		await preflightDatabase(databaseConnection, {
 			operation: options.dryRun ? 'steamRead' : 'steamWrite',
