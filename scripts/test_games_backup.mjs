@@ -208,7 +208,11 @@ async function main() {
 			),
 			2
 		);
-		const restoreEnv = { ...env, IMPORTER_DATABASE_URL: target.toString() };
+		const restoreEnv = {
+			...env,
+			IMPORTER_DATABASE_URL: target.toString(),
+			VAPOURDB_DATABASE_MODE: 'production'
+		};
 		run(process.execPath, ['scripts/restore_games.mjs', csvPath], restoreEnv);
 		const countAfterFirst = Number(
 			(await targetClient.query('SELECT count(*)::int AS count FROM public.games')).rows[0].count
