@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 jobs:
   setup-permissions:
@@ -159,6 +160,12 @@ jobs:
           GITHUB_ACTIONS: 'true'
       - run: pnpm build
       - run: docker build --tag vapourdb:ci .
+      - name: Validate production Compose configuration with safe fixture values
+        env:
+          VAPOURDB_IMAGE_REVISION: 0123456789abcdef0123456789abcdef01234567
+          VAPOURDB_RUNTIME_ENV_FILE: env.example
+        run: docker compose --file deploy/production/compose.yml config --quiet
+      - run: docker build --target migration --tag vapourdb:migration-ci .
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
         env:
