@@ -12,6 +12,7 @@ describe('production deployment packaging', () => {
 	const dockerfile = read('Dockerfile');
 	const deployScript = read('deploy/production/deploy.sh');
 	const nginx = read('deploy/production/nginx.conf');
+	const runbook = read('deploy/production/README.md');
 	const ci = read('.github/workflows/ci.yml');
 	const release = read('.github/workflows/release-production.yml');
 
@@ -74,10 +75,29 @@ describe('production deployment packaging', () => {
 
 	it('configures an independent apex HTTPS vhost and loopback proxy', () => {
 		expect(nginx).toContain('server_name vapourdb.com;');
+		expect(nginx).toMatch(
+			/server\s*\{\s*listen 443 ssl;[\s\S]*?\n\tinclude \/etc\/nginx\/cloudflare-realip\.conf;\n\treal_ip_header CF-Connecting-IP;\n\treal_ip_recursive on;/
+		);
+		expect(nginx).toContain('include /etc/nginx/cloudflare-realip.conf;');
+		expect(nginx).toContain('real_ip_header CF-Connecting-IP;');
+		expect(nginx).toContain('real_ip_recursive on;');
+		expect(nginx).not.toMatch(/^\s*set_real_ip_from\s+/m);
 		expect(nginx).toContain('proxy_pass http://127.0.0.1:3000;');
 		expect(nginx).toContain('proxy_set_header X-Forwarded-For $remote_addr;');
+		expect(nginx).not.toMatch(/proxy_set_header X-Forwarded-For \$http_x_forwarded_for/i);
 		expect(nginx).toContain('ssl_certificate /etc/ssl/cloudflare/vapourdb.com.pem;');
 		expect(nginx).not.toContain('elecparts.app');
+	});
+
+	it('documents the recovery trade-off without a backup gate', () => {
+		expect(runbook).toContain(
+			'can permanently lose VapourDB accounts, sessions, reports, devices, and game catalog'
+		);
+		expect(runbook).toContain('A Docker volume provides persistence, not a backup.');
+		expect(runbook).toContain('Backups are not a deployment prerequisite');
+		expect(runbook).toContain('A prior image or release tag does not reverse database migrations.');
+		expect(runbook).toContain('matching-40-character-commit-sha-from-that-run');
+		expect(runbook).not.toMatch(/pg_dump|age identity|backup-before-deploy|vapourdb-backups/i);
 	});
 
 	it('keeps push and pull-request checks separate from immutable tag releases', () => {

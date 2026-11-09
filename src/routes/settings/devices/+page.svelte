@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { onMount } from 'svelte';
 	import type { ActionData, PageData } from './$types';
 	import { MAX_USER_DEVICES } from '#lib/device-limits.js';
 	import { formatGpuName } from '#lib/gpu-format.js';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+	let hydrated = $state(false);
+	onMount(() => {
+		hydrated = true;
+	});
 	const deviceTypeLabel = (type: string) =>
 		type === 'steam_deck' ? 'Steam Deck' : 'Linux desktop';
 	const summary = (device: PageData['devices'][number]) =>
@@ -123,6 +128,7 @@
 								method="POST"
 								action="?/delete"
 								use:enhance
+								data-hydrated={hydrated ? 'true' : 'false'}
 								onsubmit={(event) => {
 									if (
 										!confirm(

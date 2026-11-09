@@ -1,8 +1,10 @@
 # VapourDB production runbook
 
-This runbook deploys the private `armin-salihovic/tux-gg` repository as the GHCR package `ghcr.io/armin-salihovic/vapourdb` at `https://vapourdb.com`. Releases use a separate Compose project named `vapourdb`. The existing ElecParts PostgreSQL 17 container is reached over its `production_internal` Docker network; this configuration never creates, recreates, or publishes a PostgreSQL service.
+This runbook deploys the private `armin-salihovic/tux-gg` repository as the GHCR package `ghcr.io/armin-salihovic/vapourdb` at `https://vapourdb.com`. Releases use a separate Compose project named `vapourdb`. VapourDB uses its already-created `vapourdb` database and login on the shared Netcup VPS, reached through the existing ElecParts PostgreSQL 17 container's `production_internal` Docker network. The application and database stay separate from ElecParts; this configuration never creates, recreates, or publishes a PostgreSQL service.
 
 The GitHub release workflow runs the complete CI workflow at the tagged commit, publishes app and migration images tagged by release and commit, then connects over verified SSH. On the VPS it pulls both matching images, runs the migration command once, and only if that succeeds replaces the app container. The app is bound to `127.0.0.1:3000` for host Nginx. Compose's raw env-file format requires Docker Compose 2.30.0 or newer.
+
+Without independent backups, a host, volume, or database failure, or an irreversible migration, can permanently lose VapourDB accounts, sessions, reports, devices, and game catalog. A Docker volume provides persistence, not a backup. Backups are not a deployment prerequisite; the operator accepts this recovery trade-off.
 
 ## 1. Verify the existing VPS resources
 
@@ -54,7 +56,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Set Cloudflare SSL/TLS mode to **Full (strict)**. Keep the DNS record proxied during initial validation. The Nginx template forwards `X-Forwarded-For` from `$remote_addr` only, so incoming client-supplied forwarding chains are not trusted. If the existing host real-IP configuration trusts Cloudflare's published proxy ranges, `$remote_addr` is the original client address; otherwise it remains the Cloudflare edge address. Do not add untrusted Cloudflare headers to that configuration. The site config only serves `vapourdb.com`; `www.vapourdb.com` needs its own DNS and certificate coverage before being enabled.
+Set Cloudflare SSL/TLS mode to **Full (strict)**. Keep the DNS record proxied during initial validation. The HTTPS server includes the host-maintained `/etc/nginx/cloudflare-realip.conf`, then uses `CF-Connecting-IP`; keep that include up to date with trusted Cloudflare ranges. The template overwrites `X-Forwarded-For` with `$remote_addr`, so client-supplied forwarding chains are not trusted. The site config only serves `vapourdb.com`; `www.vapourdb.com` needs its own DNS and certificate coverage before being enabled.
 
 Keep public launch gated while the operator validates the origin and smoke tests the site. If available, configure a temporary Cloudflare Access allowlist for the operator before enabling the proxied DNS record; remove the gate only after the operator approves launch. If Access is unavailable, defer enabling the public DNS record until the operator finishes origin checks and approves cutover.
 
@@ -113,56 +115,9 @@ In the private GitHub repository, create the `production` environment, require t
 
 The account must be able to use Docker and write only to the pre-created `/opt/vapourdb` deployment directory. The workflow enforces strict SSH host-key checking, verifies the existing directory ownership and modes, and transfers only `compose.yml` and `deploy.sh` into `/opt/vapourdb`. It does not need a Git checkout or GitHub access token on the VPS. Keep the GHCR package private; if it is deliberately made public later, the VPS read token may be omitted and that visibility change should be documented.
 
-## 5. Take and test a full database backup
+## 5. Recovery limits
 
-Take a full backup before the first production migration and before every later migration release. `pg_dump -Fc` below dumps the whole `vapourdb` database, including `games`, users, sessions, reports, devices, and every other table. It connects inside the existing PostgreSQL container, so no host port is published. Store the encrypted file outside Docker volumes and the repository; keep the age private identity separately and retain an off-host copy.
-
-Prepare a restricted backup directory on encrypted or otherwise protected storage, then run as `elecparts` (install `age` on the VPS if needed):
-
-```sh
-sudo install -d -o elecparts -g elecparts -m 0700 /opt/vapourdb-backups
-sudo -iu elecparts
-set -euo pipefail
-umask 077
-read -r -p 'age public recipient: ' AGE_RECIPIENT
-read -r -s -p 'Existing vapourdb role password: ' PGPASSWORD
-printf '\n'
-export AGE_RECIPIENT PGPASSWORD
-backup="/opt/vapourdb-backups/vapourdb-$(date -u +%Y%m%dT%H%M%SZ).dump.age"
-partial="$backup.partial"
-trap 'rm -f -- "$partial"' EXIT
-docker exec --env PGPASSWORD production-postgres-1 pg_dump \
-  -h 127.0.0.1 -U vapourdb -d vapourdb -Fc \
-  | age -r "$AGE_RECIPIENT" > "$partial"
-test -s "$partial"
-mv -- "$partial" "$backup"
-unset PGPASSWORD AGE_RECIPIENT
-sha256sum "$backup"
-```
-
-Test restoration into a separately named disposable database before relying on the backup. Have a PostgreSQL administrator create a new, empty database such as `vapourdb_restore_check_YYYYMMDD` owned by `vapourdb`; never use `vapourdb` as the restore target. Restore without changing object ownership or grants, then verify the identity, key tables, and counts. Drop only that disposable test database after the check.
-
-```sh
-docker exec --user postgres production-postgres-1 createdb --owner=vapourdb vapourdb_restore_check_YYYYMMDD
-read -r -s -p 'Existing vapourdb role password: ' PGPASSWORD
-printf '\n'
-export PGPASSWORD
-age -d -i /secure/location/age-identity.txt /opt/vapourdb-backups/vapourdb-TIMESTAMP.dump.age \
-  | docker exec -i --env PGPASSWORD production-postgres-1 pg_restore \
-      -h 127.0.0.1 -U vapourdb -d vapourdb_restore_check_YYYYMMDD \
-      --exit-on-error --no-owner --no-privileges
-docker exec --env PGPASSWORD production-postgres-1 psql \
-  -h 127.0.0.1 -U vapourdb -d vapourdb_restore_check_YYYYMMDD \
-  -v ON_ERROR_STOP=1 -c "select current_database(), current_user;" \
-  -c "select count(*) as games from public.games;" \
-  -c "select count(*) as users from public.user;" \
-  -c "select count(*) as sessions from public.session;" \
-  -c "select count(*) as reports from public.native_reports;" \
-  -c "select count(*) as devices from public.user_devices;"
-unset PGPASSWORD
-```
-
-Confirm expected counts and AppIDs for the disposable restore, then have the administrator drop only its exact disposable name with `docker exec --user postgres production-postgres-1 dropdb vapourdb_restore_check_YYYYMMDD`. Do not restore into or overwrite the production `vapourdb` database. Do not use a Docker volume as the only backup, and do not use, copy, or overwrite ElecParts backups or historical `tuxgg` backups.
+This release workflow does not create backups or require a backup approval. The existing Docker volume is the database's persistent storage; it does not protect against host, volume, or database loss. If recovery is needed, use an independently prepared recovery plan that targets only VapourDB. Do not modify ElecParts data or the historical `tuxgg` database or CSV.
 
 ## 6. Release, migrate, deploy, and smoke-test
 
@@ -184,6 +139,8 @@ The remote deploy command is:
 bash /opt/vapourdb/deploy.sh v0.1.0 <40-character-commit-sha>
 ```
 
+Use the full commit SHA from the same successful release run as the `v0.1.0` tag.
+
 It validates the release and private environment file, checks the existing PostgreSQL container/network alias, verifies both image revision labels, runs the one-off `node scripts/db_migrate.mjs` job against database `vapourdb`, then updates and checks the app. A migration failure exits before replacing the currently running app. It does not run `db:setup`, create a database, or migrate on every app start.
 
 After the action reports success, verify the Docker health status and both endpoints:
@@ -197,7 +154,7 @@ curl -fsS https://vapourdb.com/healthz
 
 Then smoke-test `/`, `/games`, Steam OpenID login and callback, authorized access to the Users tab, unauthenticated access restrictions, and contact/legal pages. Confirm there are no HTTPS redirect loops. Do not run real Steam login E2E tests against production automatically.
 
-If and only if all production app tables are empty, a specific source file has been reviewed, and the operator explicitly approves importing it, copy that CSV to a restricted, temporary path on the VPS. Verify its checksum and expected row/AppID count first, and take a full backup before the import. The migration image contains the repository's existing transactional `restore_games.mjs`; this command mounts only the approved CSV read-only and imports it only when manually run:
+If and only if all production app tables are empty, a specific source file has been reviewed, and the operator explicitly approves importing it, copy that CSV to a restricted, temporary path on the VPS. Verify its checksum and expected row/AppID count first. The migration image contains the repository's existing transactional `restore_games.mjs`; this command mounts only the approved CSV read-only and imports it only when manually run:
 
 ```sh
 sudo install -d -o elecparts -g elecparts -m 0700 /opt/vapourdb-config/catalog-import
@@ -223,16 +180,18 @@ docker compose --project-name vapourdb --file /opt/vapourdb/compose.yml --profil
   --entrypoint node migrate scripts/restore_games.mjs /input/games.csv
 ```
 
-Check the importer summary and independently verify the expected row count and AppIDs afterward. The deployment workflow never performs this import and never reaches into local Windows files. Keep or remove the temporary source file according to the backup policy.
+Check the importer summary and independently verify the expected row count and AppIDs afterward. The deployment workflow never performs this import and never reaches into local Windows files. Retain or remove the temporary source file according to the operator's data-retention decision.
 
 ## 7. Roll back or pause deployment
 
-Record the previous release tag and commit SHA from the successful Actions run. To redeploy that app revision, the `elecparts` user can run the same guarded deploy command:
+Record the previous release tag and its matching commit SHA from the same successful Actions run. Check that the older app image is compatible with the current database schema before selecting it. To redeploy that app revision, the `elecparts` user can run the same guarded deploy command:
 
 ```sh
-bash /opt/vapourdb/deploy.sh v0.1.0 <previous-40-character-commit-sha>
+previous_tag='<tag-from-the-successful-release-run>'
+previous_sha='<matching-40-character-commit-sha-from-that-run>'
+bash /opt/vapourdb/deploy.sh "$previous_tag" "$previous_sha"
 ```
 
-This reuses the immutable SHA-tagged images and runs any still-pending migrations before recreating the app. Migrations are forward-only; rolling the app back does not reverse schema changes. Check compatibility with the current database schema before rolling back, and restore only from the tested encrypted backup into a separately reviewed recovery plan.
+This reuses the immutable SHA-tagged images and runs any still-pending migrations before recreating the app. A prior image or release tag does not reverse database migrations. Stop if compatibility with the current schema is uncertain; the deploy command does not restore or reset the database.
 
 For safe logs, provide the deployed revision and runtime env file when running Compose: `VAPOURDB_IMAGE_REVISION=<deployed-commit-sha> VAPOURDB_RUNTIME_ENV_FILE=/opt/vapourdb-config/vapourdb.env docker compose --project-name vapourdb --file /opt/vapourdb/compose.yml logs --tail=100 app`. Also inspect migration output from the deployment job. Do not run `docker inspect` without a format because it can display environment values. To pause new releases during an incident, disable the `Release production` workflow in GitHub Actions or remove its deployment authorization through the protected `production` environment. Do not stop or remove ElecParts services.

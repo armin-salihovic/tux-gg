@@ -14,6 +14,7 @@ test.skip(
 );
 
 async function acceptDeleteConfirmation(page: Page, button: Locator) {
+	await expect(button.locator('xpath=ancestor::form[1]')).toHaveAttribute('data-hydrated', 'true');
 	const dialogPromise = page.waitForEvent('dialog');
 	const clickPromise = button.click();
 	const dialog = await dialogPromise;
@@ -316,13 +317,20 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		});
 
 		await page.goto(formPath);
+		await expect(page.locator('form[data-hydrated="true"]')).toBeVisible();
 		await page.getByLabel('Compatibility verdict').selectOption('yes');
 		await page.getByLabel('Which device did you play on?').selectOption(mainDevice.id);
 		await page.getByLabel('Your experience').fill('This exact form submission was already saved.');
 		await page.locator('input[name="id"]').evaluate((input, existingId) => {
 			(input as HTMLInputElement).value = existingId;
 		}, reportId);
+		const duplicateResponsePromise = page.waitForResponse(
+			(response) =>
+				response.request().method() === 'POST' && new URL(response.url()).pathname === formPath
+		);
 		await page.getByRole('button', { name: 'Submit report' }).click();
+		const duplicateResponse = await duplicateResponsePromise;
+		expect(duplicateResponse.status()).toBe(409);
 		await expect(page.getByRole('alert')).toContainText(
 			'This form was already submitted. Reload the page to start another report.'
 		);

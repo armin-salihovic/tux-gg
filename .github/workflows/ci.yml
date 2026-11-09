@@ -167,6 +167,12 @@ jobs:
         run: docker compose --file deploy/production/compose.yml config --quiet
       - run: docker build --target migration --tag vapourdb:migration-ci .
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Repeat native report browser journey against disposable database
+        run: pnpm exec playwright test e2e/native-reports.spec.ts --repeat-each=3
+        env:
+          DB_DATABASE: vapourdb_test
+          VAPOURDB_TEST_DATABASE: '1'
+          GITHUB_ACTIONS: 'true'
       - run: pnpm test:e2e
         env:
           DB_DATABASE: vapourdb_test
