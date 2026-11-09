@@ -45,6 +45,12 @@ input,
 select {
 	font: inherit;
 }
+button:not(:disabled),
+input[type='button']:not(:disabled),
+input[type='submit']:not(:disabled),
+input[type='reset']:not(:disabled) {
+	cursor: pointer;
+}
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,

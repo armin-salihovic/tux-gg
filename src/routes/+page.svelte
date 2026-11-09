@@ -140,10 +140,6 @@
 			VapourDB keeps that catalog separate from player-submitted compatibility reports and system
 			details.
 		</p>
-		<a
-			class="mt-6 inline-flex items-center gap-2 text-sm font-bold text-mint hover:text-lime"
-			href="/data-sources">Read about the data <span aria-hidden="true">→</span></a
-		>
 	</div>
 	<div class="rounded-3xl border border-lime/15 bg-lime/[0.045] p-6 sm:p-8">
 		<p class="eyebrow !text-lime">Community reports</p>

@@ -33,6 +33,32 @@ test('homepage renders search and security headers without a database', async ({
 	await expect(page.getByRole('link', { name: /browse the catalog/i })).toBeVisible();
 });
 
+test('retired data sources page, links, and sitemap entry are gone', async ({ page }) => {
+	const retiredPage = await page.request.get('/data-sources');
+	expect(retiredPage.status()).toBe(404);
+
+	await page.goto('/');
+	await expect(page.locator('a[href="/data-sources"]')).toHaveCount(0);
+	await expect(
+		page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', {
+			name: 'Data sources'
+		})
+	).toHaveCount(0);
+	await expect(page.locator('footer').getByRole('link', { name: 'Data sources' })).toHaveCount(0);
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.getByRole('button', { name: 'Toggle navigation' }).click();
+	await expect(
+		page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('link', {
+			name: 'Data sources'
+		})
+	).toHaveCount(0);
+
+	const sitemap = await page.request.get('/sitemap-static.xml');
+	expect(sitemap.status()).toBe(200);
+	expect(await sitemap.text()).not.toContain('/data-sources');
+});
+
 test('login page offers Steam-only sign-in and starts a mocked Steam handoff', async ({ page }) => {
 	let loginRequests = 0;
 	await page.route('**/api/auth/steam/login*', async (route) => {
@@ -59,6 +85,18 @@ test('login page offers Steam-only sign-in and starts a mocked Steam handoff', a
 	await page.goto('/login');
 	await page.waitForLoadState('networkidle');
 	await expect(page).toHaveTitle('Sign in | VapourDB');
+	const steamLogo = page.getByRole('img', { name: 'Steam' });
+	await expect(steamLogo).toBeVisible();
+	expect(
+		await steamLogo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)
+	).toBe(true);
+	const logoResponse = await page.request.get('/steam-logo.svg');
+	expect(logoResponse.status()).toBe(200);
+	expect(logoResponse.headers()['content-type']).toContain('image/svg+xml');
+	const logoSvg = await logoResponse.text();
+	expect(logoSvg).toContain('viewBox="0 0 355.666 89.333"');
+	expect(logoSvg).toContain('fill="#C5C3C0"');
+	await expect(page.locator('.surface svg')).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: 'Sign in through Steam' })).toBeVisible();
 	await expect(
 		page.getByText(
@@ -76,6 +114,25 @@ test('login page offers Steam-only sign-in and starts a mocked Steam handoff', a
 	);
 	await expect(page.getByRole('heading', { name: 'Mock Steam OpenID' })).toBeVisible();
 	expect(loginRequests).toBe(1);
+});
+
+test('enabled action buttons use a pointer cursor and disabled buttons retain their wait cursor', async ({
+	page
+}) => {
+	await page.goto('/login');
+	const loginButton = page.getByRole('button', { name: 'Sign in through Steam' });
+	expect(await loginButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('pointer');
+	await loginButton.evaluate((button: HTMLButtonElement) => (button.disabled = true));
+	expect(await loginButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('wait');
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/');
+	const menuButton = page.getByRole('button', { name: 'Toggle navigation' });
+	expect(await menuButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('pointer');
+
+	await page.goto('/games');
+	const searchButton = page.getByRole('button', { name: 'Search', exact: true });
+	expect(await searchButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('pointer');
 });
 
 test('login page shows actionable errors for rejected and unavailable auth responses', async ({

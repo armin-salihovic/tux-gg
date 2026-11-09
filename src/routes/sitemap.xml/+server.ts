@@ -7,7 +7,6 @@ const STATIC_PATHS = [
 	'/games',
 	'/about',
 	'/methodology',
-	'/data-sources',
 	'/privacy',
 	'/terms',
 	'/community-rules',

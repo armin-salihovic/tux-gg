@@ -35,7 +35,6 @@
 			<a class="transition hover:text-mint" href="/games">Games</a>
 			<a class="transition hover:text-mint" href="/about">About</a>
 			<a class="transition hover:text-mint" href="/methodology">Rating</a>
-			<a class="transition hover:text-mint" href="/data-sources">Data sources</a>
 		</nav>
 
 		<div class="hidden items-center gap-3 md:flex">
@@ -109,11 +108,6 @@
 				class="rounded-lg px-3 py-2 text-slate-200 hover:bg-white/5"
 				href="/methodology"
 				onclick={() => (menuOpen = false)}>Rating methodology</a
-			>
-			<a
-				class="rounded-lg px-3 py-2 text-slate-200 hover:bg-white/5"
-				href="/data-sources"
-				onclick={() => (menuOpen = false)}>Data sources</a
 			>
 			{#if user}
 				<a

@@ -13,7 +13,7 @@
 - `/games/[appId]/[slug]`: Steam metadata and VapourDB's published player reports.
 - `/games/[appId]/[slug]/report/new`, `/my-reports`, and `/users/[username]`: account and contribution pages.
 - `/settings` and `/settings/devices`: profile and private Linux/Steam Deck device records.
-- `/about`, `/methodology`, `/data-sources`, `/privacy`, `/terms`, `/community-rules`, and `/contact`: service and data documentation.
+- `/about`, `/methodology`, `/privacy`, `/terms`, `/community-rules`, and `/contact`: service and data documentation.
 - `/robots.txt`, `/sitemap.xml`, game sitemap chunks, and `/healthz`: crawling and operations.
 
 ## PostgreSQL model

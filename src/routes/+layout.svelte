@@ -32,7 +32,6 @@
 				</p>
 			</div>
 			<div class="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-400">
-				<a class="hover:text-mint" href="/data-sources">Data sources</a>
 				<a class="hover:text-mint" href="/privacy">Privacy</a>
 				<a class="hover:text-mint" href="/terms">Terms</a>
 				<a class="hover:text-mint" href="/community-rules">Community rules</a>

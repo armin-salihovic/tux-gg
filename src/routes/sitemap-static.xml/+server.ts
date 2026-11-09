@@ -5,7 +5,6 @@ const paths = [
 	'/games',
 	'/about',
 	'/methodology',
-	'/data-sources',
 	'/privacy',
 	'/terms',
 	'/community-rules',

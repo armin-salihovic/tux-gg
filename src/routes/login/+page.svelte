@@ -33,13 +33,9 @@
 <section class="container-shell grid min-h-[65vh] place-items-center py-12">
 	<div class="surface w-full max-w-md rounded-3xl p-7 text-center sm:p-9">
 		<div
-			class="mx-auto grid size-14 place-items-center rounded-2xl border border-[#66c0f4]/30 bg-[#66c0f4]/10 text-2xl font-black text-[#9bd5f6]"
+			class="mx-auto flex h-14 items-center justify-center rounded-2xl border border-[#66c0f4]/30 bg-[#66c0f4]/10 px-5"
 		>
-			<svg viewBox="0 0 32 32" class="size-8" aria-hidden="true" fill="currentColor">
-				<path
-					d="M16 2a14 14 0 1 0 0 28 14 14 0 0 0 0-28Zm-3.2 16.1-4.6-2.7 1.1-1.8 4.6 2.7a4.2 4.2 0 1 1-1.1 1.8Zm8.4-6.8a4 4 0 1 1-6.9-2.8 4 4 0 0 1 6.9 2.8Zm-5.5 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0Z"
-				/>
-			</svg>
+			<img src="/steam-logo.svg" width="178" height="45" class="h-8 w-auto sm:h-9" alt="Steam" />
 		</div>
 		<p class="eyebrow mt-6">Your VapourDB account</p>
 		<h1 class="mt-2 text-3xl font-black tracking-tight text-white">Sign in through Steam</h1>
