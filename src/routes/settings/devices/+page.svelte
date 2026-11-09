@@ -27,6 +27,10 @@
 			class="rounded-full bg-mint/10 px-4 py-2 text-sm font-semibold text-mint"
 			aria-current="page">Devices</span
 		>
+		{#if data.isOwnerAdmin}<a
+				class="rounded-full border border-line px-4 py-2 text-sm text-slate-200 hover:border-mint/40 hover:text-mint"
+				href="/settings/users">Users</a
+			>{/if}
 	</nav>
 	<div class="mt-6 flex flex-wrap items-end justify-between gap-4">
 		<div>

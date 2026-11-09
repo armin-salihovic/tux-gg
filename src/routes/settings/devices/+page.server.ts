@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { Actions, PageServerLoad } from './$types';
 import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
+import { isOwnerAdmin as hasOwnerAdminAccess } from '#lib/server/admin-access.js';
 import { requireUser } from '#lib/server/authz.js';
 import {
 	deleteUserDevice,
@@ -21,7 +22,13 @@ export const load: PageServerLoad = async (event) => {
 	} catch {
 		error(503, 'Your devices are temporarily unavailable. Please try again.');
 	}
-	return { devices, saved: event.url.searchParams.get('saved') === '1' };
+	let isOwnerAdmin = false;
+	try {
+		isOwnerAdmin = await hasOwnerAdminAccess(event);
+	} catch {
+		// Keep the private Settings link hidden if the Steam account lookup fails.
+	}
+	return { devices, isOwnerAdmin, saved: event.url.searchParams.get('saved') === '1' };
 };
 
 export const actions: Actions = {

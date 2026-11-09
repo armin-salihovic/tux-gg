@@ -7,6 +7,7 @@
 			title: 'Account information',
 			paragraphs: [
 				'If you sign in through Steam OpenID, VapourDB stores your SteamID64, a display name, username, optional profile image, and the private account/session records required for authentication. Steam does not provide a verified email address. VapourDB uses a private placeholder address internally; it is not verified, displayed, or used for email or account linking.',
+				'For service operation, an owner-authorized Steam account can view a private account overview with VapourDB usernames, display names, registration dates, and totals of reports submitted by each account. The totals include all moderation statuses; the overview does not show report text, email addresses, or authentication credentials.',
 				'VapourDB may use an optional server-side Steam Web API key to retrieve public profile details. Steam authentication is verified separately through Steam OpenID.'
 			]
 		},

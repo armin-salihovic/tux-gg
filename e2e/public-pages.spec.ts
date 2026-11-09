@@ -361,6 +361,9 @@ test('account settings, My Reports, and report forms require sign-in', async ({ 
 	const settings = await page.request.get('/settings', { maxRedirects: 0 });
 	expect(settings.status()).toBe(303);
 	expect(settings.headers().location).toBe('/login');
+	const registeredUsers = await page.request.get('/settings/users?page=2', { maxRedirects: 0 });
+	expect(registeredUsers.status()).toBe(303);
+	expect(registeredUsers.headers().location).toBe('/login');
 	const myReports = await page.request.get('/my-reports', { maxRedirects: 0 });
 	expect(myReports.status()).toBe(303);
 	expect(myReports.headers().location).toBe('/login?returnTo=%2Fmy-reports');

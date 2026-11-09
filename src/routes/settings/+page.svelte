@@ -24,6 +24,10 @@
 			class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-slate-200 hover:border-mint/40 hover:text-mint"
 			href="/settings/devices">Devices</a
 		>
+		{#if data.isOwnerAdmin}<a
+				class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-slate-200 hover:border-mint/40 hover:text-mint"
+				href="/settings/users">Users</a
+			>{/if}
 	</nav>
 	{#if data.saved}<div
 			role="status"

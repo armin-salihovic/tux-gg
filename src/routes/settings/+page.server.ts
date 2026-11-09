@@ -5,6 +5,7 @@ import { requireUser } from '#lib/server/authz.js';
 import { getSettingsProfile } from '#lib/server/db/queries.js';
 import { getDb } from '#lib/server/db/db.js';
 import { authUser } from '#lib/server/db/schema.js';
+import { isOwnerAdmin as hasOwnerAdminAccess } from '#lib/server/admin-access.js';
 import { eq } from 'drizzle-orm';
 
 const profileSchema = z.object({
@@ -25,7 +26,13 @@ export const load: PageServerLoad = async (event) => {
 	const user = requireUser(event);
 	const profile = await getSettingsProfile(user.id);
 	if (!profile) redirect(303, '/login');
-	return { profile, saved: event.url.searchParams.get('saved') === '1' };
+	let isOwnerAdmin = false;
+	try {
+		isOwnerAdmin = await hasOwnerAdminAccess(event);
+	} catch {
+		// The private link stays hidden if the persisted account lookup is unavailable.
+	}
+	return { profile, isOwnerAdmin, saved: event.url.searchParams.get('saved') === '1' };
 };
 
 export const actions: Actions = {
