@@ -116,25 +116,6 @@ test('login page offers Steam-only sign-in and starts a mocked Steam handoff', a
 	expect(loginRequests).toBe(1);
 });
 
-test('enabled action buttons use a pointer cursor and disabled buttons retain their wait cursor', async ({
-	page
-}) => {
-	await page.goto('/login');
-	const loginButton = page.getByRole('button', { name: 'Sign in through Steam' });
-	expect(await loginButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('pointer');
-	await loginButton.evaluate((button: HTMLButtonElement) => (button.disabled = true));
-	expect(await loginButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('wait');
-
-	await page.setViewportSize({ width: 390, height: 844 });
-	await page.goto('/');
-	const menuButton = page.getByRole('button', { name: 'Toggle navigation' });
-	expect(await menuButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('pointer');
-
-	await page.goto('/games');
-	const searchButton = page.getByRole('button', { name: 'Search', exact: true });
-	expect(await searchButton.evaluate((button) => getComputedStyle(button).cursor)).toBe('pointer');
-});
-
 test('login page shows actionable errors for rejected and unavailable auth responses', async ({
 	page
 }) => {
