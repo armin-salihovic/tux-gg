@@ -53,12 +53,10 @@ require_secret() {
 			count++
 			value = substr(line, separator + 1)
 			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-			if (
-				value == "" ||
-				value == "replace-with-existing-vapourdb-role-password" ||
-				value == "replace-with-a-new-production-secret" ||
-				value ~ /^<.*>$/
-			) invalid = 1
+			if (value == "") invalid = 1
+			if (value == "replace-with-existing-vapourdb-role-password") invalid = 1
+			if (value == "replace-with-a-new-production-secret") invalid = 1
+			if (value ~ /^<.*>$/) invalid = 1
 		}
 		END { exit !(count == 1 && !invalid) }
 	' "$RUNTIME_ENV_FILE"; then
