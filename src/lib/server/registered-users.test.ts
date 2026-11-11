@@ -32,6 +32,7 @@ describe('registered users pagination', () => {
 		queryMock.mockResolvedValueOnce({ rows: [{ total: '26' }] }).mockResolvedValueOnce({
 			rows: [
 				{
+					userId: 'latest-user-id',
 					name: 'Latest User',
 					username: 'latest-user',
 					registeredAt: new Date('2026-11-09T12:00:00.000Z'),
@@ -44,6 +45,7 @@ describe('registered users pagination', () => {
 		expect(result).toEqual({
 			users: [
 				{
+					userId: 'latest-user-id',
 					name: 'Latest User',
 					username: 'latest-user',
 					profilePath: '/users/latest-user',
@@ -70,6 +72,7 @@ describe('registered users pagination', () => {
 		queryMock.mockResolvedValueOnce({ rows: [{ total: '1' }] }).mockResolvedValueOnce({
 			rows: [
 				{
+					userId: 'new-user-id',
 					name: 'New User',
 					username: '../hidden',
 					registeredAt: '2026-11-09T12:00:00.000Z',
@@ -79,6 +82,7 @@ describe('registered users pagination', () => {
 		});
 		const result = await listRegisteredUsers(1);
 		expect(result.users[0]).toEqual({
+			userId: 'new-user-id',
 			name: 'New User',
 			username: '../hidden',
 			profilePath: null,

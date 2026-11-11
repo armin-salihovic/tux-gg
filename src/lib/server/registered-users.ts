@@ -15,6 +15,7 @@ const registrationDateFormatter = new Intl.DateTimeFormat('en-GB', {
 });
 
 export type RegisteredUserSummary = {
+	userId: string;
 	name: string;
 	username: string;
 	profilePath: string | null;
@@ -56,6 +57,7 @@ export async function listRegisteredUsers(requestedPage: number): Promise<Regist
 	const offset = (page - 1) * REGISTERED_USERS_PAGE_SIZE;
 
 	const pageResult = await pool.query<{
+		userId: string;
 		name: string;
 		username: string;
 		registeredAt: Date | string;
@@ -72,7 +74,8 @@ export async function listRegisteredUsers(requestedPage: number): Promise<Regist
 			INNER JOIN page_users AS page ON page.id = report.author_id
 			GROUP BY report.author_id
 		)
-		SELECT page.name,
+		SELECT page.id AS "userId",
+			page.name,
 			page.username,
 			page.created_at AS "registeredAt",
 			COALESCE(review_counts.review_count, 0)::text AS "reviewsSubmitted"
@@ -87,6 +90,7 @@ export async function listRegisteredUsers(requestedPage: number): Promise<Regist
 		if (Number.isNaN(date.getTime())) throw new Error('Invalid user registration timestamp.');
 		const parsedReviews = Number(row.reviewsSubmitted);
 		return {
+			userId: row.userId,
 			name: row.name,
 			username: row.username,
 			profilePath: getPublicUsernamePath(row.username),

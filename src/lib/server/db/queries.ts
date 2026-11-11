@@ -343,12 +343,13 @@ export async function getProfile(username: string) {
 	const db = getDb();
 	const [profile] = await db
 		.select({
-			id: authUser.id,
 			name: authUser.name,
 			username: authUser.username,
 			image: authUser.image,
 			createdAt: authUser.createdAt,
-			contributionCount: count(nativeReports.id)
+			contributionCount: count(nativeReports.id),
+			worksCount: sql<number>`count(${nativeReports.id}) filter (where ${nativeReports.verdict} = 'yes')::int`,
+			doesNotWorkCount: sql<number>`count(${nativeReports.id}) filter (where ${nativeReports.verdict} = 'no')::int`
 		})
 		.from(authUser)
 		.leftJoin(
@@ -365,6 +366,49 @@ export async function getProfile(username: string) {
 		.groupBy(authUser.id)
 		.limit(1);
 	return profile ?? null;
+}
+
+export async function getPublicUserReports(username: string, requestedPage: number) {
+	const pool = getPool();
+	const pageSize = 10;
+	const pageCount = await pool.query<{ total: string | number }>(
+		`SELECT count(*)::int AS total
+		 FROM public.native_reports AS report
+		 JOIN public."user" AS author ON author.id = report.author_id
+		 WHERE author.username = $1 AND report.moderation_state IN ('pending', 'published')`,
+		[username]
+	);
+	const total = Number(pageCount.rows[0]?.total ?? 0);
+	const pageCountValue = Math.max(1, Math.ceil(total / pageSize));
+	const page = Math.min(Math.max(1, requestedPage), pageCountValue);
+	const rows = await pool.query(
+		`SELECT report.id, report.app_id AS "appId", coalesce(game.title, 'Steam app ' || report.app_id) AS "gameTitle",
+		        game.slug AS "gameSlug", game.artwork_url AS "artworkUrl",
+		        report.verdict, report.platform, report.proton_version AS "protonVersion",
+		        report.proton_variant AS "protonVariant",
+		        report.custom_proton_version AS "customProtonVersion", report.distribution,
+		        report.kernel, report.cpu, report.gpu, report.gpu_vendor AS "gpuVendor",
+		        report.graphics_driver AS "graphicsDriver",
+		        report.gpu_driver_detail AS "gpuDriverDetail", report.ram,
+		        report.device_name_snapshot AS "deviceNameSnapshot",
+		        report.launch_options AS "launchOptions",
+		        report.performance_notes AS "performanceNotes", report.known_issues AS "knownIssues",
+		        report.content, report.created_at AS "createdAt"
+		 FROM public.native_reports AS report
+		 JOIN public."user" AS author ON author.id = report.author_id
+		 JOIN public.games AS game ON game.app_id = report.app_id
+		 WHERE author.username = $1 AND report.moderation_state IN ('pending', 'published')
+		 ORDER BY report.created_at DESC, report.id DESC
+		 LIMIT $2 OFFSET $3`,
+		[username, pageSize, (page - 1) * pageSize]
+	);
+	return {
+		reports: rows.rows,
+		total,
+		page,
+		pageSize,
+		pageCount: pageCountValue
+	};
 }
 
 export async function getSettingsProfile(userId: string) {

@@ -35,6 +35,9 @@
 		{#if data.isOwnerAdmin}<a
 				class="rounded-full border border-line px-4 py-2 text-sm text-slate-200 hover:border-mint/40 hover:text-mint"
 				href="/settings/users">Users</a
+			><a
+				class="rounded-full border border-line px-4 py-2 text-sm text-slate-200 hover:border-mint/40 hover:text-mint"
+				href="/settings/reports">Report Moderation</a
 			>{/if}
 	</nav>
 	<div class="mt-6 flex flex-wrap items-end justify-between gap-4">

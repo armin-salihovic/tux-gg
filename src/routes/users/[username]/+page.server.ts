@@ -1,11 +1,15 @@
 import { error } from '@sveltejs/kit';
+import { z } from 'zod';
 import type { PageServerLoad } from './$types';
-import { getProfile } from '#lib/server/db/queries.js';
+import { getProfile, getPublicUserReports } from '#lib/server/db/queries.js';
 import { absoluteUrl } from '#lib/server/seo.js';
+import { PRIVATE_NO_STORE_CACHE_CONTROL } from '#lib/server/cache-policy.js';
 
-export const load: PageServerLoad = async ({ params, setHeaders }) => {
+const pageSchema = z.coerce.number().int().min(1).max(10_000).catch(1);
+
+export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 	if (!/^[a-z0-9][a-z0-9_-]{2,23}$/.test(params.username)) error(404, 'Profile not found');
-	setHeaders({ 'cache-control': 'public, max-age=60, stale-while-revalidate=300' });
+	setHeaders({ 'cache-control': PRIVATE_NO_STORE_CACHE_CONTROL });
 	let profile;
 	try {
 		profile = await getProfile(params.username);
@@ -13,5 +17,14 @@ export const load: PageServerLoad = async ({ params, setHeaders }) => {
 		error(503, 'Profiles are temporarily unavailable');
 	}
 	if (!profile) error(404, 'Profile not found');
-	return { profile, canonical: absoluteUrl(`/users/${profile.username}`) };
+	let reportData;
+	try {
+		reportData = await getPublicUserReports(
+			profile.username,
+			pageSchema.parse(url.searchParams.get('page') ?? '1')
+		);
+	} catch {
+		error(503, 'Profiles are temporarily unavailable');
+	}
+	return { profile, reportData, canonical: absoluteUrl(`/users/${profile.username}`) };
 };

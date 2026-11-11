@@ -23,6 +23,10 @@
 			class="rounded-full bg-mint/10 px-4 py-2 text-sm font-semibold text-mint"
 			aria-current="page">Users</span
 		>
+		<a
+			class="rounded-full border border-line px-4 py-2 text-sm text-slate-200 hover:border-mint/40"
+			href="/settings/reports">Report Moderation</a
+		>
 	</nav>
 
 	<div class="mt-7 flex flex-wrap items-end justify-between gap-4">
@@ -49,7 +53,7 @@
 	{:else}
 		<div class="surface mt-7 overflow-hidden rounded-2xl">
 			<div class="overflow-x-auto">
-				<table class="w-full min-w-[42rem] border-collapse text-left text-sm">
+				<table class="w-full min-w-[48rem] border-collapse text-left text-sm">
 					<caption class="sr-only">Registered VapourDB accounts and reviews submitted</caption>
 					<thead
 						class="border-b border-line bg-black/15 text-xs tracking-wide text-slate-400 uppercase"
@@ -58,6 +62,7 @@
 							<th class="px-5 py-4 font-semibold" scope="col">VapourDB username / display name</th>
 							<th class="px-5 py-4 font-semibold" scope="col">Registration date</th>
 							<th class="px-5 py-4 text-right font-semibold" scope="col">Reviews submitted</th>
+							<th class="px-5 py-4 text-right font-semibold" scope="col">Reports</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-line/70">
@@ -76,6 +81,13 @@
 								</td>
 								<td class="px-5 py-4 text-right text-slate-200 tabular-nums">
 									{user.reviewsSubmitted.toLocaleString('en-GB')}
+								</td>
+								<td class="px-5 py-4 text-right">
+									<a
+										class="font-semibold text-mint hover:text-lime"
+										href={`/settings/reports?filter=all&userId=${encodeURIComponent(user.userId)}`}
+										>View reports</a
+									>
 								</td>
 							</tr>
 						{/each}

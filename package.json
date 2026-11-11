@@ -16,7 +16,7 @@
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
 		"test:unit": "vitest run",
-		"test:auth-integration": "vitest run --no-file-parallelism src/lib/server/auth.integration.test.ts src/lib/server/native-reports.integration.test.ts src/lib/server/user-devices.integration.test.ts src/lib/server/registered-users.integration.test.ts",
+		"test:auth-integration": "vitest run --no-file-parallelism src/lib/server/auth.integration.test.ts src/lib/server/native-reports.integration.test.ts src/lib/server/user-devices.integration.test.ts src/lib/server/registered-users.integration.test.ts src/lib/server/report-moderation.integration.test.ts",
 		"test:e2e": "playwright test",
 		"test": "pnpm test:unit && pnpm test:e2e",
 		"db:generate": "drizzle-kit generate",
