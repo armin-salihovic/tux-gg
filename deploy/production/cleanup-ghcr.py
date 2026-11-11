@@ -137,7 +137,6 @@ def plan_retention(
             and version_id > 0
             and isinstance(tags, list)
             and all(isinstance(tag, str) for tag in tags)
-            and len(tags) > 0
             and len(tags) == len(set(tags))
             and version_id not in ids
         )
@@ -154,8 +153,16 @@ def plan_retention(
 
     if malformed:
         protected = tuple(
-            {"id": version.get("id"), "tags": sorted(tags), "reason": "missing, duplicate, or malformed package-version metadata"}
-            for version, tags, _associated, _valid in records
+            {
+                "id": version.get("id"),
+                "tags": sorted(tags),
+                "reason": (
+                    "untagged package version"
+                    if valid and not tags
+                    else "missing, duplicate, or malformed package-version metadata"
+                ),
+            }
+            for version, tags, _associated, valid in records
         )
         return Plan((), (), protected, "package-version metadata is incomplete or duplicated")
 
@@ -169,7 +176,7 @@ def plan_retention(
     for index, (_version, tags, _associated, _valid) in enumerate(records):
         identities: set[str] = set()
         roles: set[tuple[str, str]] = set()
-        reason: str | None = None
+        reason: str | None = "untagged package version" if not tags else None
         for tag in tags:
             identity = _tag_identity(tag, normalized_commits)
             if identity is None:

@@ -208,7 +208,9 @@ are recognized and map exclusively to obsolete complete pairs. Unknown tags,
 unmapped or ambiguous SHA tags, duplicate tags, mixed versions, incomplete
 metadata, and the current release remain protected. The Actions log lists the
 retention count, retained releases, protected package-version IDs and reasons,
-and planned deletions.
+and planned deletions. Valid package-version records with an empty tag list are
+preserved individually as untagged versions and do not block safe cleanup of
+other complete obsolete release pairs.
 
 If the log reports a GHCR `403` or permission error, check the package's Actions
 access settings and confirm the repository has access to the `vapourdb` package

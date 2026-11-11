@@ -63,6 +63,33 @@ def test_seven_releases_keep_five_complete_runtime_and_migration_pairs():
     assert {RELEASES[1], f"{RELEASES[1]}-migration"} <= removed_tags
 
 
+def test_untagged_version_is_protected_without_blocking_obsolete_pair_deletion():
+    versions = package_versions()
+    versions.append(version(999))
+    plan = cleanup.plan_retention(versions, COMMITS, RELEASES[-1])
+
+    assert plan.retained == tuple(reversed(RELEASES[-5:]))
+    assert deleted_ids(plan) == {1, 2, 3, 4}
+    assert 999 not in deleted_ids(plan)
+    assert any(
+        item["id"] == 999
+        and item["tags"] == []
+        and item["reason"] == "untagged package version"
+        for item in plan.protected
+    )
+    deleted_tags = {tag for item in plan.deleting for tag in item["tags"]}
+    assert {
+        RELEASES[0],
+        f"sha-{COMMITS[RELEASES[0]]}",
+        f"{RELEASES[0]}-migration",
+        f"sha-{COMMITS[RELEASES[0]]}-migration",
+        RELEASES[1],
+        f"sha-{COMMITS[RELEASES[1]]}",
+        f"{RELEASES[1]}-migration",
+        f"sha-{COMMITS[RELEASES[1]]}-migration",
+    } == deleted_tags
+
+
 def test_fewer_than_five_complete_pairs_are_not_deleted():
     releases = RELEASES[:3]
     plan = cleanup.plan_retention(package_versions(releases), COMMITS, releases[-1])
@@ -154,6 +181,39 @@ def test_missing_current_release_and_incomplete_metadata_fail_closed():
     plan = cleanup.plan_retention(malformed, COMMITS, RELEASES[-1])
     assert plan.reason
     assert not plan.deleting
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"container": {}},
+        {"container": {"tags": None}},
+        {"container": {"tags": "v1.0.0"}},
+        {"container": {"tags": [None]}},
+    ],
+    ids=["missing-tags", "none-tags", "non-list-tags", "non-string-tag"],
+)
+def test_missing_or_invalid_tag_field_fails_closed(metadata):
+    versions = package_versions() + [{"id": 950, "metadata": metadata}]
+    plan = cleanup.plan_retention(versions, COMMITS, RELEASES[-1])
+
+    assert plan.reason
+    assert not plan.deleting
+    assert any(item["id"] == 950 for item in plan.protected)
+
+
+@pytest.mark.parametrize("invalid_id", [0, 1])
+def test_untagged_version_with_invalid_or_duplicate_id_fails_closed(invalid_id):
+    versions = package_versions() + [version(invalid_id)]
+    plan = cleanup.plan_retention(versions, COMMITS, RELEASES[-1])
+
+    assert plan.reason
+    assert not plan.deleting
+    assert any(
+        item["tags"] == []
+        and item["reason"] == "missing, duplicate, or malformed package-version metadata"
+        for item in plan.protected
+    )
 
 
 def test_release_tag_matcher_does_not_widen_the_workflow_ascii_grammar():
