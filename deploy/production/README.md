@@ -182,7 +182,74 @@ docker compose --project-name vapourdb --file /opt/vapourdb/compose.yml --profil
 
 Check the importer summary and independently verify the expected row count and AppIDs afterward. The deployment workflow never performs this import and never reaches into local Windows files. Retain or remove the temporary source file according to the operator's data-retention decision.
 
-## 7. Roll back or pause deployment
+## 7. Automatic image retention
+
+Image cleanup runs only as the final best-effort step of a successful new
+release: CI, publication, protected VPS deployment, Docker health checks, and
+the host-local `/healthz` request must all succeed first. A push to `main` does
+not run cleanup. Cleanup errors are logged as warnings and do not turn a healthy
+deployment into a failed deployment.
+
+### GHCR
+
+The `cleanup-ghcr` job retains the latest **5 complete VapourDB release pairs**
+by semantic-version precedence, including prereleases. Set the repository Actions
+variable `GHCR_RETENTION` to a positive integer to change the count; it defaults
+to `5`. The successfully deployed release is always protected, even if it is an
+older rollback. A release pair includes its runtime and migration images and
+their immutable release-tag and full-SHA aliases.
+
+The job runs after successful validation, CI, image publishing, and protected
+production deployment. Its `GITHUB_TOKEN` is limited to contents read and
+packages write, and requests are scoped to
+`ghcr.io/armin-salihovic/vapourdb`. Since deleting a GHCR package version removes
+every tag on that version, the selector removes a version only when all its tags
+are recognized and map exclusively to obsolete complete pairs. Unknown tags,
+unmapped or ambiguous SHA tags, duplicate tags, mixed versions, incomplete
+metadata, and the current release remain protected. The Actions log lists the
+retention count, retained releases, protected package-version IDs and reasons,
+and planned deletions.
+
+If the log reports a GHCR `403` or permission error, check the package's Actions
+access settings and confirm the repository has access to the `vapourdb` package
+with write permission for `GITHUB_TOKEN`. The cleanup intentionally skips on
+authorization or metadata errors; it does not need a PAT or another secret.
+
+### VPS image cache
+
+After health checks, the deployment script retains the current runtime and
+migration pair plus the immediately previous locally available complete pair.
+Set the repository Actions variable `VAPOURDB_IMAGE_RETENTION` to an integer of
+at least `2` to change the count; it defaults to `2`. A manually run deploy can
+also receive this setting in its environment. Invalid values produce a warning
+and skip local cleanup.
+
+The deploy helper verifies both SHA-tagged image revision labels, then adds the
+matching local `v...` and `v...-migration` aliases and records the proven
+release-tag-to-full-SHA mapping in
+`/opt/vapourdb/retention-releases.tsv`. It checks that the local runtime and
+migration aliases point to the matching SHA-tagged images before selecting a
+pair. For a rollback to an older release, newer locally known releases are left
+untouched; the rollback release and its immediately previous older complete
+pair stay available. The retained rollback pairs keep all four aliases, including
+both SHA tags used by the deployment command.
+
+Older cached releases that existed before this metadata was recorded may have
+only `sha-<commit>` and `sha-<commit>-migration` tags. Their release identity
+cannot be proven without Git or a checked release mapping, so they remain on the
+VPS until an operator associates or removes them manually. Incomplete pairs,
+revision mismatches, unexpected tags, and images referenced by containers are
+also protected. The helper only removes named tags in
+`ghcr.io/armin-salihovic/vapourdb`; it never runs a Docker prune command or
+changes containers, networks, volumes, PostgreSQL, or ElecParts resources.
+
+The VPS cleanup helper uses Python 3's standard library. If Python 3 or the
+helper is unavailable, the deployment logs a warning and remains successful.
+The cleanup plan and any Docker removal warnings appear in the deployment job
+log. The helper has an offline `--test-plan` mode used by unit tests; it reads a
+fixture and never contacts Docker.
+
+## 8. Roll back or pause deployment
 
 Record the previous release tag and its matching commit SHA from the same successful Actions run. Check that the older app image is compatible with the current database schema before selecting it. To redeploy that app revision, the `elecparts` user can run the same guarded deploy command:
 

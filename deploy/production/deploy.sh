@@ -9,6 +9,7 @@ readonly DB_CONTAINER=production-postgres-1
 readonly DB_NETWORK=production_internal
 readonly PROJECT=vapourdb
 readonly APP_IMAGE=ghcr.io/armin-salihovic/vapourdb
+readonly CLEANUP_SCRIPT="$ROOT/cleanup-vps.py"
 
 fail() {
 	printf 'VapourDB deployment stopped: %s\n' "$1" >&2
@@ -156,3 +157,12 @@ curl --fail --silent --show-error --max-time 10 --output /dev/null http://127.0.
 	fail 'host-local HTTP health verification failed'
 
 printf 'VapourDB release %s (%s) is healthy.\n' "$release_tag" "$revision"
+
+if [[ -f "$CLEANUP_SCRIPT" && ! -L "$CLEANUP_SCRIPT" ]]; then
+	python3 "$CLEANUP_SCRIPT" "$release_tag" "$revision" ||
+		printf 'WARNING: VapourDB image cleanup helper failed; deployment remains successful.\n' >&2
+else
+	printf 'WARNING: VapourDB image cleanup helper is missing or unsafe; skipping local image cleanup.\n' >&2
+fi
+
+printf 'VapourDB deployment result: success.\n'

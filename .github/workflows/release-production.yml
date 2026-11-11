@@ -147,8 +147,14 @@ jobs:
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_SHA: ${{ github.sha }}
+          VAPOURDB_IMAGE_RETENTION: ${{ vars.VAPOURDB_IMAGE_RETENTION || '2' }}
         run: |
           set -euo pipefail
+          if [[ "$VAPOURDB_IMAGE_RETENTION" =~ ^[0-9]+$ ]]; then
+            image_retention="$VAPOURDB_IMAGE_RETENTION"
+          else
+            image_retention=invalid
+          fi
           target="$DEPLOY_USER@$DEPLOY_HOST"
           ssh_options=(-i "$SSH_KEY_FILE" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KNOWN_HOSTS_FILE" -o ConnectTimeout=15)
           ssh "${ssh_options[@]}" "$target" 'set -eu
@@ -159,8 +165,31 @@ jobs:
             test -f /opt/vapourdb-config/vapourdb.env && test ! -L /opt/vapourdb-config/vapourdb.env
             test "$(stat -c "%U:%a" /opt/vapourdb-config/vapourdb.env)" = "elecparts:600"
           '
-          scp "${ssh_options[@]}" deploy/production/compose.yml deploy/production/deploy.sh "$target:/opt/vapourdb/"
-          ssh "${ssh_options[@]}" "$target" "chmod 0750 /opt/vapourdb/deploy.sh && bash /opt/vapourdb/deploy.sh '$RELEASE_TAG' '$RELEASE_SHA'"
+          scp "${ssh_options[@]}" deploy/production/compose.yml deploy/production/deploy.sh deploy/production/cleanup-vps.py "$target:/opt/vapourdb/"
+          ssh "${ssh_options[@]}" "$target" "chmod 0750 /opt/vapourdb/deploy.sh && VAPOURDB_IMAGE_RETENTION='$image_retention' bash /opt/vapourdb/deploy.sh '$RELEASE_TAG' '$RELEASE_SHA'"
       - name: Remove temporary SSH files
         if: always()
         run: rm -f "$RUNNER_TEMP/vapourdb_deploy_key" "$RUNNER_TEMP/vapourdb_known_hosts"
+
+  cleanup-ghcr:
+    needs: [validate-release, ci, publish, deploy]
+    if: ${{ always() && needs.validate-release.result == 'success' && needs.ci.result == 'success' && needs.publish.result == 'success' && needs.deploy.result == 'success' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: vapourdb-ghcr-cleanup
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GHCR_RETENTION: ${{ vars.GHCR_RETENTION || '5' }}
+      CURRENT_RELEASE: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Clean up older VapourDB GHCR releases (best effort)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 deploy/production/cleanup-ghcr.py

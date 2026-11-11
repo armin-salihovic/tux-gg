@@ -11,7 +11,8 @@ describe('production deployment packaging', () => {
 	const envExample = read('deploy/production/env.example');
 	const dockerfile = read('Dockerfile');
 	const deployScript = read('deploy/production/deploy.sh');
-	const nginx = read('deploy/production/nginx.conf');
+	const cleanupScript = read('deploy/production/cleanup-vps.py');
+	const nginx = read('deploy/production/nginx.conf').replace(/\r\n/g, '\n');
 	const runbook = read('deploy/production/README.md');
 	const ci = read('.github/workflows/ci.yml');
 	const release = read('.github/workflows/release-production.yml');
@@ -73,6 +74,26 @@ describe('production deployment packaging', () => {
 		expect(deployScript).not.toContain('compose down');
 	});
 
+	it('runs VapourDB-only image retention after all health checks and fails nonfatally', () => {
+		const httpHealth = deployScript.indexOf('curl --fail --silent --show-error --max-time 10');
+		const cleanupCall = deployScript.indexOf('python3 "$CLEANUP_SCRIPT"');
+		const deploymentSuccess = deployScript.indexOf('VapourDB deployment result: success.');
+		expect(httpHealth).toBeGreaterThanOrEqual(0);
+		expect(cleanupCall).toBeGreaterThan(httpHealth);
+		expect(deploymentSuccess).toBeGreaterThan(cleanupCall);
+		expect(deployScript).toContain('WARNING: VapourDB image cleanup helper failed');
+		expect(cleanupScript).toContain('VAPOURDB_IMAGE_RETENTION');
+		expect(cleanupScript).toContain('container_image_ids');
+		expect(cleanupScript).toContain('retention-releases.tsv');
+		expect(cleanupScript).toContain('--test-plan');
+		expect(cleanupScript).toContain('["image", "rm", reference]');
+		expect(cleanupScript).not.toContain('ghcr.io/armin-salihovic/elecparts');
+		expect(cleanupScript).not.toMatch(/docker\s+(?:system|image|container|volume)\s+prune/i);
+		expect(cleanupScript).not.toMatch(/docker\s+image\s+rm\s+-f/i);
+		expect(cleanupScript).not.toContain('docker compose down');
+		expect(cleanupScript).toContain('ghcr.io/armin-salihovic/vapourdb');
+	});
+
 	it('configures an independent apex HTTPS vhost and loopback proxy', () => {
 		expect(nginx).toContain('server_name vapourdb.com;');
 		expect(nginx).toMatch(
@@ -117,6 +138,9 @@ describe('production deployment packaging', () => {
 		expect(release).toContain('ghcr.io/armin-salihovic/vapourdb:${{ github.ref_name }}');
 		expect(release).toContain('target: migration');
 		expect(release).toContain('packages: write');
+		expect(release).toContain(
+			"VAPOURDB_IMAGE_RETENTION: ${{ vars.VAPOURDB_IMAGE_RETENTION || '2' }}"
+		);
 		expect(release).toContain('environment: production');
 		expect(release).toContain('group: vapourdb-production');
 		expect(release).toContain('StrictHostKeyChecking=yes');
@@ -127,6 +151,23 @@ describe('production deployment packaging', () => {
 		expect(release).not.toContain('DB_PASSWORD');
 		expect(release).not.toContain('STEAM_API_KEY');
 		expect(release).not.toContain(':latest');
+		expect(release).toContain('deploy/production/cleanup-vps.py');
+		const cleanupJob = release.split('\n  cleanup-ghcr:\n', 2)[1] ?? '';
+		expect(cleanupJob).toContain('needs: [validate-release, ci, publish, deploy]');
+		expect(cleanupJob).toContain("needs.deploy.result == 'success'");
+		expect(cleanupJob).toContain("needs.publish.result == 'success'");
+		expect(cleanupJob).toContain("needs.ci.result == 'success'");
+		expect(cleanupJob).toContain("needs.validate-release.result == 'success'");
+		expect(cleanupJob).toContain("GHCR_RETENTION: ${{ vars.GHCR_RETENTION || '5' }}");
+		expect(cleanupJob).toContain('CURRENT_RELEASE: ${{ github.ref_name }}');
+		expect(cleanupJob).toContain('GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
+		expect(cleanupJob).toContain('fetch-depth: 0');
+		expect(cleanupJob).toContain('group: vapourdb-ghcr-cleanup');
+		expect(cleanupJob).toContain('contents: read');
+		expect(cleanupJob).toContain('packages: write');
+		expect(cleanupJob).toContain('python3 deploy/production/cleanup-ghcr.py');
+		expect(ci).not.toContain('cleanup-ghcr.py');
+		expect(ci).not.toContain('cleanup-ghcr:');
 		expect(dockerfile).not.toMatch(/COPY .*\.env/);
 		expect(dockerfile).not.toContain('BETTER_AUTH_SECRET');
 	});
