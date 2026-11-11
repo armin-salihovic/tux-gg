@@ -13,7 +13,7 @@
 		{
 			title: 'Community reports',
 			paragraphs: [
-				'Steam-authenticated players can submit Linux and Steam Deck reports with a verdict and optional system details. Reports stay private while pending and become public only after operator review.',
+				'Steam-authenticated players can submit Linux and Steam Deck reports with a verdict and optional system details. Reports appear publicly as soon as they are submitted and may be hidden or removed by an operator later. The author’s public VapourDB username and chosen device details appear with the report.',
 				'Reports describe an individual setup and experience. They are not a guarantee that a game will work on another system.'
 			]
 		}

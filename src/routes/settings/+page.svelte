@@ -104,7 +104,8 @@
 			<p class="mt-2 text-sm text-muted">No Steam account is connected.</p>
 		{/if}
 		<p class="mt-5 text-xs leading-5 text-slate-500">
-			Your Steam account can submit compatibility reports. They remain private until reviewed.
+			Your Steam account can submit compatibility reports. Each report appears publicly after
+			submission and may be moderated later.
 		</p>
 	</div>
 	<a

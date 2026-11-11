@@ -4,7 +4,7 @@ import type { PageServerLoad } from './$types';
 import {
 	getGameById,
 	getNativeReportFilters,
-	getPublishedNativeReports
+	getPublicNativeReports
 } from '#lib/server/db/queries.js';
 import { absoluteUrl, plainDescription } from '#lib/server/seo.js';
 import { logDatabaseFailure } from '#lib/server/database-errors.js';
@@ -68,7 +68,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 	};
 	try {
 		[nativeReportData, filters] = await Promise.all([
-			getPublishedNativeReports(params.appId, {
+			getPublicNativeReports(params.appId, {
 				page,
 				gpuVendor,
 				distribution,

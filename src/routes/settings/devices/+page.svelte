@@ -152,7 +152,7 @@
 	{/if}
 	<p class="mt-5 text-xs leading-5 text-muted">
 		You can save up to {MAX_USER_DEVICES} devices. Steam text is sent to the server for validation, processed
-		transiently, and not stored. Published reports keep their original hardware snapshots when a device
-		is refreshed or deleted.
+		transiently, and not stored. Public reports keep their original hardware snapshots when a device is
+		refreshed or deleted.
 	</p>
 </section>

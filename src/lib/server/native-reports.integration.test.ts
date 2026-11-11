@@ -4,9 +4,13 @@ import { eq } from 'drizzle-orm';
 import { parseSteamSystemInfo } from '#lib/steam-system-info.js';
 import { canSubmitReports } from '#lib/server/authz.js';
 import {
+	getHomeData,
+	getCatalog,
 	getGameById,
 	getMyNativeReports,
-	getPublishedNativeReports
+	getNativeReportFilters,
+	getProfile,
+	getPublicNativeReports
 } from '#lib/server/db/queries.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authUser, games, nativeReports } from '#lib/server/db/schema.js';
@@ -40,6 +44,8 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 			.from(games)
 			.where(eq(games.appId, '440'));
 		expect(game).toBeTruthy();
+		const gameBefore = await getGameById('440');
+		const homeBefore = await getHomeData();
 
 		const suffix = randomUUID();
 		const userId = `native-report-${suffix}`;
@@ -73,6 +79,7 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 			appId: '440',
 			authorId: userId,
 			verdict: 'yes' as const,
+			protonVersion: 'GE-Proton 9-20',
 			content: 'A pending report from the database integration test.'
 		};
 		await insertNativeReportForDevice(submission, deviceId);
@@ -97,13 +104,48 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 			gpu: 'AMD Radeon RX 9070 XT',
 			ram: '30.5 GiB'
 		});
-		expect((await getMyNativeReports(userId)).reports.map((row) => row.id)).toContain(reportId);
+		expect((await getMyNativeReports(userId)).reports).toContainEqual(
+			expect.objectContaining({ id: reportId, isPublic: true })
+		);
 		expect((await getMyNativeReports('another-user')).reports.map((row) => row.id)).not.toContain(
 			reportId
 		);
+		const publicReport = await getPublicNativeReports('440', { page: 1, verdict: 'yes' });
+		expect(publicReport.reports.map((row) => row.id)).toContain(reportId);
+		expect(publicReport.reports.find((row) => row.id === reportId)).toMatchObject({
+			authorUsername: username,
+			content: submission.content,
+			createdAt: expect.any(Date)
+		});
+		expect(await getGameById('440')).toMatchObject({
+			reportCount: (gameBefore?.reportCount ?? 0) + 1,
+			yesCount: (gameBefore?.yesCount ?? 0) + 1
+		});
 		expect(
-			(await getPublishedNativeReports('440', { page: 1 })).reports.map((row) => row.id)
-		).not.toContain(reportId);
+			(await getCatalog({ q: '440', sort: 'reports', page: 1 })).games.find(
+				(row) => row.appId === '440'
+			)
+		).toMatchObject({ reportCount: (gameBefore?.reportCount ?? 0) + 1 });
+		expect((await getHomeData()).totalReports).toBe(homeBefore.totalReports + 1);
+		expect(await getProfile(username)).toMatchObject({ contributionCount: 1 });
+		expect(await getNativeReportFilters('440')).toMatchObject({
+			gpuVendors: expect.arrayContaining(['AMD']),
+			distributions: expect.arrayContaining(['CachyOS']),
+			proton: expect.arrayContaining([{ value: 'version:GE-Proton 9-20', label: 'GE-Proton 9-20' }])
+		});
+		expect(
+			(
+				await getPublicNativeReports('440', {
+					page: 1,
+					gpuVendor: 'AMD',
+					distribution: 'CachyOS',
+					proton: 'version:GE-Proton 9-20',
+					verdict: 'yes',
+					since: new Date('2000-01-01T00:00:00.000Z'),
+					until: new Date('2099-01-01T00:00:00.000Z')
+				})
+			).reports.map((row) => row.id)
+		).toContain(reportId);
 
 		const steamDeck = parseSteamSystemInfo(
 			'Computer Information:\nManufacturer: Valve\nModel: Galileo\nOperating System:\nSteamOS Holo (64 bit)\nProcessor Information:\nCPU Brand: AMD Custom APU 0406\nVideo Card:\nDriver: AMD AMD Custom GPU 0406 (RADV VANGOGH)\nMemory:\nRAM: 16384 Mb'
@@ -209,7 +251,8 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 		expect(identity.rows[0]?.current_user).toBe(process.env.DB_USERNAME);
 		const appId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 		const userId = `score-${randomUUID()}`;
-		const reportIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+		const reportIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+		const homeBefore = await getHomeData();
 		try {
 			await operator.query('INSERT INTO public.games (app_id, title, slug) VALUES ($1, $2, $3)', [
 				appId,
@@ -223,34 +266,160 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 			for (const [index, id] of reportIds.entries()) {
 				await operator.query(
 					`INSERT INTO public.native_reports
-					 (id, app_id, author_id, verdict, content, moderation_state, created_at, published_at)
-					 VALUES ($1, $2, $3, $4, 'Scoring fixture report', $5, now(), $6)`,
+					 (id, app_id, author_id, verdict, content, moderation_state, created_at, published_at,
+					  gpu_vendor, distribution, proton_version)
+					 VALUES ($1, $2, $3, $4, 'Scoring fixture report', $5,
+					         CASE WHEN $7 THEN now() - interval '365 days' ELSE now() END, $6, $8, $9, $10)`,
 					[
 						id,
 						appId,
 						userId,
 						index === 3 ? 'no' : 'yes',
-						index === 3 ? 'pending' : 'published',
-						index === 3 ? null : new Date()
+						index >= 2 ? 'pending' : 'published',
+						index >= 2 ? null : new Date(),
+						index === 3,
+						index === 4 ? 'Intel' : index === 2 ? 'NVIDIA' : 'AMD',
+						index === 4 ? 'Pending Distro' : index === 2 ? 'Removed Distro' : 'Scoring Distro',
+						index === 4 ? 'Pending Proton' : index === 2 ? 'Removed Proton' : 'Scoring Proton'
 					]
 				);
 			}
-			expect(await getGameById(appId)).toMatchObject({ reportCount: 3, tier: 'platinum' });
-			await operator.query(
-				"UPDATE public.native_reports SET moderation_state = 'hidden', published_at = NULL WHERE id = $1",
-				[reportIds[0]]
-			);
-			expect(await getGameById(appId)).toMatchObject({ reportCount: 2, tier: 'unknown' });
+			const pendingScore = await getGameById(appId);
+			expect(pendingScore).toMatchObject({ reportCount: 5, yesCount: 4, noCount: 1, tier: 'gold' });
+			expect((await getHomeData()).totalReports).toBe(homeBefore.totalReports + 5);
+			expect(await getProfile(`score-${appId}`)).toMatchObject({ contributionCount: 5 });
+			expect((await getPublicNativeReports(appId, { page: 1 })).reports).toHaveLength(5);
+			expect(await getPublicNativeReports(appId, { page: 1, pageSize: 2 })).toMatchObject({
+				total: 5,
+				pageCount: 3
+			});
+			const pendingFilter = await getPublicNativeReports(appId, {
+				page: 1,
+				gpuVendor: 'Intel',
+				distribution: 'Pending Distro',
+				proton: 'version:Pending Proton',
+				verdict: 'yes',
+				since: new Date('2000-01-01T00:00:00.000Z'),
+				until: new Date('2099-01-01T00:00:00.000Z')
+			});
+			expect(pendingFilter.reports.map((row) => row.id)).toEqual([reportIds[4]]);
+			expect(await getNativeReportFilters(appId)).toMatchObject({
+				gpuVendors: expect.arrayContaining(['Intel']),
+				distributions: expect.arrayContaining(['Pending Distro']),
+				proton: expect.arrayContaining([
+					{ value: 'version:Pending Proton', label: 'Pending Proton' }
+				])
+			});
+			const pendingFilters = await getPublicNativeReports(appId, { page: 1, verdict: 'no' });
+			expect(pendingFilters.reports.map((row) => row.id)).toContain(reportIds[3]);
 			await operator.query(
 				"UPDATE public.native_reports SET moderation_state = 'published', published_at = now() WHERE id = $1",
 				[reportIds[3]]
 			);
-			expect(await getGameById(appId)).toMatchObject({ reportCount: 3, tier: 'silver' });
+			const approvedScore = await getGameById(appId);
+			expect(approvedScore).toMatchObject({
+				reportCount: pendingScore?.reportCount,
+				tier: pendingScore?.tier
+			});
+			expect(approvedScore?.weightedScore).toBeCloseTo(pendingScore?.weightedScore ?? 0, 6);
+			expect(approvedScore?.total_weight).toBeCloseTo(pendingScore?.total_weight ?? 0, 6);
+			expect((await getPublicNativeReports(appId, { page: 1 })).reports.at(-1)?.id).toBe(
+				reportIds[3]
+			);
+			await operator.query(
+				"UPDATE public.native_reports SET moderation_state = 'hidden', published_at = NULL WHERE id = $1",
+				[reportIds[4]]
+			);
+			expect(await getGameById(appId)).toMatchObject({
+				reportCount: 4,
+				yesCount: 3,
+				noCount: 1,
+				tier: 'gold'
+			});
+			expect((await getHomeData()).totalReports).toBe(homeBefore.totalReports + 4);
+			expect(await getProfile(`score-${appId}`)).toMatchObject({ contributionCount: 4 });
+			expect(
+				(await getPublicNativeReports(appId, { page: 1 })).reports.map((row) => row.id)
+			).not.toContain(reportIds[4]);
+			expect((await getMyNativeReports(userId)).reports).toContainEqual(
+				expect.objectContaining({ id: reportIds[4], isPublic: false })
+			);
+			expect(
+				await getPublicNativeReports(appId, {
+					page: 1,
+					gpuVendor: 'Intel',
+					distribution: 'Pending Distro',
+					proton: 'version:Pending Proton',
+					verdict: 'yes'
+				})
+			).toMatchObject({ total: 0, reports: [] });
+			const remainingFilters = await getNativeReportFilters(appId);
+			expect(remainingFilters.gpuVendors).not.toContain('Intel');
+			expect(remainingFilters.distributions).not.toContain('Pending Distro');
+			expect(remainingFilters.proton).not.toContainEqual({
+				value: 'version:Pending Proton',
+				label: 'Pending Proton'
+			});
+			expect(await getPublicNativeReports(appId, { page: 1, pageSize: 2 })).toMatchObject({
+				total: 4,
+				pageCount: 2
+			});
+			await operator.query(
+				"UPDATE public.native_reports SET moderation_state = 'hidden', published_at = NULL WHERE id = $1",
+				[reportIds[0]]
+			);
+			expect(await getGameById(appId)).toMatchObject({
+				reportCount: 3,
+				yesCount: 2,
+				noCount: 1,
+				tier: 'unknown'
+			});
+			expect((await getHomeData()).totalReports).toBe(homeBefore.totalReports + 3);
+			expect(
+				(await getPublicNativeReports(appId, { page: 1 })).reports.map((row) => row.id)
+			).not.toContain(reportIds[0]);
 			await operator.query(
 				"UPDATE public.native_reports SET moderation_state = 'removed', published_at = NULL WHERE id = $1",
 				[reportIds[1]]
 			);
-			expect(await getGameById(appId)).toMatchObject({ reportCount: 2, tier: 'unknown' });
+			expect(await getGameById(appId)).toMatchObject({
+				reportCount: 2,
+				yesCount: 1,
+				noCount: 1,
+				tier: 'unknown'
+			});
+			expect((await getHomeData()).totalReports).toBe(homeBefore.totalReports + 2);
+			expect(
+				(await getPublicNativeReports(appId, { page: 1 })).reports.map((row) => row.id)
+			).not.toContain(reportIds[1]);
+			expect((await getMyNativeReports(userId)).reports).toContainEqual(
+				expect.objectContaining({ id: reportIds[1], isPublic: false })
+			);
+			await operator.query(
+				"UPDATE public.native_reports SET moderation_state = 'removed', published_at = NULL WHERE id = $1",
+				[reportIds[2]]
+			);
+			expect(await getGameById(appId)).toMatchObject({
+				reportCount: 1,
+				yesCount: 0,
+				noCount: 1,
+				tier: 'unknown'
+			});
+			expect((await getHomeData()).totalReports).toBe(homeBefore.totalReports + 1);
+			expect((await getMyNativeReports(userId)).reports).toContainEqual(
+				expect.objectContaining({ id: reportIds[2], isPublic: false })
+			);
+			expect(await getProfile(`score-${appId}`)).toMatchObject({ contributionCount: 1 });
+			const finalFilters = await getNativeReportFilters(appId);
+			expect(finalFilters.gpuVendors).not.toContain('NVIDIA');
+			expect(finalFilters.distributions).not.toContain('Removed Distro');
+			expect(finalFilters.proton).not.toContainEqual({
+				value: 'version:Removed Proton',
+				label: 'Removed Proton'
+			});
+			const finalPublicPage = await getPublicNativeReports(appId, { page: 1, pageSize: 2 });
+			expect(finalPublicPage).toMatchObject({ total: 1, pageCount: 1 });
+			expect(finalPublicPage.reports.map((row) => row.id)).toEqual([reportIds[3]]);
 		} finally {
 			await operator.query('DELETE FROM public.games WHERE app_id = $1', [appId]);
 			await operator.query('DELETE FROM public.user WHERE id = $1', [userId]);

@@ -4,7 +4,7 @@ const queries = vi.hoisted(() => ({
 	getHomeData: vi.fn(),
 	getCatalog: vi.fn(),
 	getGameById: vi.fn(),
-	getPublishedNativeReports: vi.fn(),
+	getPublicNativeReports: vi.fn(),
 	getNativeReportFilters: vi.fn()
 }));
 
@@ -67,7 +67,7 @@ describe('database-backed page failures', () => {
 			titleAvailable: true,
 			reportCount: 12
 		});
-		queries.getPublishedNativeReports.mockRejectedValue(failingDatabaseError);
+		queries.getPublicNativeReports.mockRejectedValue(failingDatabaseError);
 		queries.getNativeReportFilters.mockResolvedValue({
 			gpuVendors: [],
 			distributions: [],

@@ -112,7 +112,7 @@
 						{data.game.title}
 					</h1>
 					<p class="mt-5 text-sm text-slate-300">
-						{data.game.reportCount.toLocaleString()} published VapourDB {data.game.reportCount === 1 ? 'report' : 'reports'}
+						{data.game.reportCount.toLocaleString()} VapourDB community {data.game.reportCount === 1 ? 'report' : 'reports'}
 						<span class="px-1.5 text-slate-600">·</span>
 						Works: <strong class="text-mint">{data.game.yesCount}</strong>
 						<span class="px-1.5 text-slate-600">·</span>
@@ -125,7 +125,7 @@
 								{Math.round(data.game.weightedScore * 100)}% positive · effective sample {data.game.effectiveSampleSize.toFixed(1)}
 							</span>
 						{:else}
-							<span class="text-xs text-muted">Not enough published reports to rate</span>
+							<span class="text-xs text-muted">Not enough community reports to rate</span>
 						{/if}
 					</div>
 					{#if steam?.shortDescription}<p class="mt-4 max-w-2xl text-sm leading-6 text-slate-300">{steam.shortDescription}</p>{/if}
@@ -146,7 +146,7 @@
 			<div>
 				<p class="eyebrow !text-lime">Share your experience</p>
 				<h2 class="mt-1 text-lg font-bold text-white">Played this game on Linux or Steam Deck?</h2>
-				<p class="mt-1 max-w-2xl text-sm leading-6 text-slate-300">Help other players by sharing how it runs. VapourDB community reports are reviewed before they are published.</p>
+				<p class="mt-1 max-w-2xl text-sm leading-6 text-slate-300">Help other players by sharing how it runs. Reports appear publicly after submission and may be moderated later.</p>
 			</div>
 			<a class="mt-4 inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-mint px-5 py-3 text-sm font-extrabold text-ink hover:bg-lime sm:mt-0" href={`${gamePath}/report/new`}>Write a Report</a>
 		</div>
@@ -159,7 +159,7 @@
 					<p class="eyebrow">VapourDB Community Reports</p>
 					<h2 class="mt-2 text-2xl font-extrabold text-white">Player-submitted reports</h2>
 				</div>
-				{#if data.nativeReportData}<span class="text-xs text-muted">{data.nativeReportData.total.toLocaleString()} published</span>{/if}
+				{#if data.nativeReportData}<span class="text-xs text-muted">{data.nativeReportData.total.toLocaleString()} reports</span>{/if}
 			</div>
 			{#if !data.nativeReportData}
 				<div class="mt-5 rounded-2xl border border-amber-200/20 bg-amber-200/[0.05] p-5 text-sm text-amber-100">VapourDB community reports are temporarily unavailable.</div>
@@ -172,7 +172,7 @@
 									<a class="font-bold text-white hover:text-mint" href={`/users/${report.authorUsername}`}>@{report.authorUsername}</a>
 									<p class="mt-1 text-sm text-slate-300">{report.verdict === 'yes' ? 'Yes — works' : 'No — does not work'} · {report.platform === 'steam_deck' ? 'Steam Deck' : report.platform === 'linux_desktop' ? 'Linux desktop' : 'Platform not specified'}</p>
 								</div>
-								{#if report.publishedAt}<time class="text-xs text-muted" datetime={report.publishedAt.toISOString()}>{dateFormat.format(report.publishedAt)}</time>{/if}
+								<time class="text-xs text-muted" datetime={report.createdAt.toISOString()}>{dateFormat.format(report.createdAt)}</time>
 							</div>
 							{#if report.deviceNameSnapshot}<h3 class="mt-4 border-t border-white/[0.06] pt-4 text-sm font-bold text-white">{report.deviceNameSnapshot}</h3>{/if}
 							{#if report.protonVersion || report.protonVariant || report.customProtonVersion || report.distribution || report.kernel || report.cpu || report.gpu || report.gpuVendor || report.graphicsDriver || report.gpuDriverDetail || report.ram || report.launchOptions}

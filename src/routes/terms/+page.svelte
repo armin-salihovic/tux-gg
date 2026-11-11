@@ -18,7 +18,7 @@
 		{
 			title: 'Contributions',
 			paragraphs: [
-				'You may submit reports describing your own game experience and setup. Reports begin in private review, and operators may publish, hide, or remove them. Do not submit personal information or content you do not have permission to share.'
+				'You may submit reports describing your own game experience and setup. Reports appear publicly immediately, including your report text, public username, and chosen device details. Operators may later hide or remove them. Do not submit personal information or content you do not have permission to share.'
 			]
 		},
 		{

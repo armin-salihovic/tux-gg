@@ -276,8 +276,9 @@
 				</div>
 
 				<p class="text-xs leading-5 text-muted">
-					Reports are private until reviewed. Do not include personal information. Plain text only;
-					HTML is not accepted.
+					Reports appear publicly after submission, including your report text, username, and chosen
+					device details, and may be moderated later. Do not include personal information. Plain
+					text only; HTML is not accepted.
 				</p>
 				<button
 					disabled={submitting}

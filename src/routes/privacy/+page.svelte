@@ -20,7 +20,7 @@
 		{
 			title: 'VapourDB community reports',
 			paragraphs: [
-				'If you submit a report, VapourDB stores the compatibility verdict, platform, selected device snapshot, optional technical details, report text, and your account ID. It remains visible only in your My Reports page until an operator publishes it. A published report displays your public username and submitted report details on the game page. Do not include personal information.'
+				'If you submit a report, VapourDB stores the compatibility verdict, platform, selected device snapshot, optional technical details, report text, and your account ID. Your report text, public username, and chosen device details appear on the game page immediately after submission. Operators may later hide or remove a report. Do not include personal information.'
 			]
 		},
 		{

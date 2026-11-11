@@ -15,7 +15,6 @@ export const TIER_LABELS: Record<CompatibilityTier, string> = {
 export interface ScoringReport {
 	verdict: 'yes' | 'no';
 	createdAt: Date;
-	publishedAt?: Date | null;
 }
 
 export interface CompatibilityScore {
@@ -44,9 +43,9 @@ export function tierForEvidence(
 	return 'borked';
 }
 
-export function recencyWeight(publishedAt: Date | null | undefined, now = new Date()): number {
-	if (!publishedAt || Number.isNaN(publishedAt.getTime())) return 0;
-	const ageDays = Math.max(0, (now.getTime() - publishedAt.getTime()) / 86_400_000);
+export function recencyWeight(evidenceAt: Date | null | undefined, now = new Date()): number {
+	if (!evidenceAt || Number.isNaN(evidenceAt.getTime())) return 0;
+	const ageDays = Math.max(0, (now.getTime() - evidenceAt.getTime()) / 86_400_000);
 	return 2 ** (-ageDays / 365);
 }
 
@@ -58,7 +57,7 @@ export function scoreCompatibility(
 	let totalWeight = 0;
 	let squaredWeight = 0;
 	for (const report of reports) {
-		const weight = recencyWeight(report.publishedAt ?? report.createdAt, now);
+		const weight = recencyWeight(report.createdAt, now);
 		if (!weight) continue;
 		totalWeight += weight;
 		squaredWeight += weight * weight;

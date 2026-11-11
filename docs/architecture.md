@@ -10,7 +10,7 @@
 ## Routes
 
 - `/` and `/games`: Steam game catalog overview, title/AppID search, sorting, and pagination.
-- `/games/[appId]/[slug]`: Steam metadata and VapourDB's published player reports.
+- `/games/[appId]/[slug]`: Steam metadata and public VapourDB player reports.
 - `/games/[appId]/[slug]/report/new`, `/my-reports`, and `/users/[username]`: account and contribution pages.
 - `/settings` and `/settings/devices`: profile and private Linux/Steam Deck device records.
 - `/about`, `/methodology`, `/privacy`, `/terms`, `/community-rules`, and `/contact`: service and data documentation.
@@ -31,7 +31,7 @@ Native reports retain foreign keys to `games` and `user`. One configured Postgre
 
 `pnpm steam:sync` refreshes stale metadata for at most 10 games by default and 20 per run at most. Successful responses carry a 30-day `lastFetchedAt` cache timestamp. Requests are sequential, spaced at least two seconds apart, and use bounded retries. `--force` bypasses freshness checks. `--dry-run` reads the catalog to preview work and makes no Steam requests or database writes. `pnpm steam:discover` uses Steamworks `IStoreService/GetAppList` pages to find additional game AppIDs and names; it skips existing rows and does not request detailed metadata for every discovered game.
 
-Public compatibility is calculated from published native yes/no reports. Each report's recency weight has a 365-day half-life. Pending, hidden, and removed reports are excluded, and the tier remains Unknown until total weight and effective sample size both reach three. Changes to moderation state are reflected on the next query. No compatibility summary table is materialized.
+Public compatibility is calculated from pending and published native yes/no reports. Each report's recency weight has a 365-day half-life based on `created_at`. Hidden and removed reports are excluded, and the tier remains Unknown until total weight and effective sample size both reach three. Changes to moderation state are reflected on the next query. No compatibility summary table is materialized.
 
 Game page indexability requires a non-empty title and a Steam short description of at least 50 characters. The sitemap query applies that same rule.
 
@@ -39,7 +39,7 @@ Game page indexability requires a non-empty title and a Steam short description 
 
 - Better Auth secrets, database credentials, and the optional Steam Web API key stay server-side.
 - Steam OpenID account identity is stored as `account.providerId = 'steam'` and `account.accountId`; no Steam tokens are stored.
-- Report author IDs come from the authenticated session. New reports default to `pending`; only an operator can publish them.
+- Report author IDs come from the authenticated session. New reports default to `pending` and appear publicly immediately; operators can approve, hide, or remove them afterward.
 - Saved-device hardware is derived server-side from validated Steam System Information. Every new report stores a hardware snapshot.
 - User report text is rendered as escaped text.
 - Search uses PostgreSQL full-text search and `pg_trgm`; app IDs and canonical slugs provide stable game URLs.

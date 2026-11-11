@@ -24,7 +24,7 @@ async function acceptDeleteConfirmation(page: Page, button: Locator) {
 	await clickPromise;
 }
 
-test('Steam user submits a pending report, views it privately, then sees it after operator approval', async ({
+test('Steam user publishes a pending report immediately and operators can moderate it afterward', async ({
 	page,
 	browser,
 	baseURL
@@ -291,8 +291,10 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		});
 		await page.getByRole('button', { name: 'Submit report' }).click();
 		await expect(page).toHaveURL('/my-reports?submitted=1');
-		await expect(page.getByRole('status')).toContainText('submitted for review');
-		await expect(page.getByText('Pending review')).toBeVisible();
+		await expect(page.getByRole('status')).toContainText('Your report has been posted');
+		await expect(page.getByText('Pending review')).toHaveCount(0);
+		await expect(page.getByText('Published', { exact: true })).toHaveCount(0);
+		expect(await page.locator('body').innerText()).not.toMatch(/\b(pending|published|approval)\b/i);
 		await expect(page.getByRole('link', { name: 'Team Fortress 2', exact: true })).toHaveAttribute(
 			'href',
 			gamePath
@@ -342,9 +344,25 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 
 		await page.goto(gamePath);
 		await expect(page.getByRole('heading', { name: 'Player-submitted reports' })).toBeVisible();
-		await expect(page.getByText(unsafeLookingText, { exact: true })).toHaveCount(0);
+		const pendingReport = page.locator('article').filter({ hasText: `@${username}` });
+		await expect(pendingReport).toHaveCount(1);
+		await expect(page.getByText(unsafeLookingText, { exact: true })).toBeVisible();
 		await expect(page.locator('img[src="x"]')).toHaveCount(0);
+		await expect(pendingReport.getByRole('heading', { name: 'Main Gaming PC' })).toBeVisible();
+		await expect(pendingReport.getByText('AMD Radeon RX 9070 XT', { exact: false })).toBeVisible();
+		await page.goto(`/users/${username}`);
+		await expect(page.getByText('public VapourDB reports')).toBeVisible();
+		await expect(page.locator('section .grid > div').first()).toContainText('1');
 
+		const reportCountBeforeApproval = await web.query(
+			"SELECT count(*)::int AS total FROM public.native_reports WHERE app_id = '440' AND moderation_state IN ('pending', 'published')"
+		);
+		const pendingOutput = execFileSync('python', ['scripts/moderate_native_reports.py', 'list'], {
+			cwd: process.cwd(),
+			encoding: 'utf8',
+			env: { ...process.env }
+		});
+		expect(pendingOutput).toContain(reportId);
 		const output = execFileSync(
 			'python',
 			['scripts/moderate_native_reports.py', 'approve', reportId],
@@ -356,7 +374,13 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 		);
 		expect(output).toContain('set to published');
 		await page.goto('/my-reports');
-		await expect(page.getByText('Published', { exact: true })).toBeVisible();
+		await expect(page.getByText('Pending review')).toHaveCount(0);
+		await expect(page.getByText('Published', { exact: true })).toHaveCount(0);
+		expect(await page.locator('body').innerText()).not.toMatch(/\b(pending|published|approval)\b/i);
+		const reportCountAfterApproval = await web.query(
+			"SELECT count(*)::int AS total FROM public.native_reports WHERE app_id = '440' AND moderation_state IN ('pending', 'published')"
+		);
+		expect(reportCountAfterApproval.rows[0]?.total).toBe(reportCountBeforeApproval.rows[0]?.total);
 		await page.goto(gamePath);
 		await page.reload();
 		const publishedReport = page.locator('article').filter({ hasText: `@${username}` });
@@ -440,6 +464,23 @@ test('Steam user submits a pending report, views it privately, then sees it afte
 			)
 		).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Submit report' })).toHaveCount(0);
+
+		execFileSync('python', ['scripts/moderate_native_reports.py', 'hide', reportId], {
+			cwd: process.cwd(),
+			encoding: 'utf8',
+			env: { ...process.env }
+		});
+		await page.goto(gamePath);
+		await expect(page.locator('article').filter({ hasText: `@${username}` })).toHaveCount(0);
+		await page.goto('/my-reports');
+		await expect(page.getByText('This report is no longer public.')).toBeVisible();
+		execFileSync('python', ['scripts/moderate_native_reports.py', 'remove', reportId], {
+			cwd: process.cwd(),
+			encoding: 'utf8',
+			env: { ...process.env }
+		});
+		await page.goto(gamePath);
+		await expect(page.locator('article').filter({ hasText: `@${username}` })).toHaveCount(0);
 	} finally {
 		await web.end();
 	}

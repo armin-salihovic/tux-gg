@@ -3,12 +3,6 @@
 	import GameArtwork from '#lib/components/GameArtwork.svelte';
 	let { data }: { data: PageData } = $props();
 	const dateFormat = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
-	const statusLabels: Record<string, string> = {
-		pending: 'Pending review',
-		published: 'Published',
-		hidden: 'Hidden',
-		removed: 'Removed'
-	};
 	const pageHref = (page: number) => (page > 1 ? `/my-reports?page=${page}` : '/my-reports');
 </script>
 
@@ -34,7 +28,7 @@
 			role="status"
 			class="mt-6 rounded-xl border border-mint/20 bg-mint/[0.06] p-4 text-sm text-mint"
 		>
-			Your report was submitted for review. It will appear publicly after approval.
+			Your report has been posted. Thanks for sharing your experience!
 		</p>
 	{/if}
 
@@ -85,13 +79,9 @@
 								Device: {report.deviceNameSnapshot}
 							</p>{/if}
 					</div>
-					<span
-						class="w-fit rounded-full border px-3 py-1.5 text-xs font-semibold {report.moderationState ===
-						'published'
-							? 'border-mint/25 bg-mint/10 text-mint'
-							: 'border-white/10 bg-white/[0.04] text-slate-300'}"
-						>{statusLabels[report.moderationState] ?? 'Pending review'}</span
-					>
+					{#if !report.isPublic}
+						<p class="text-xs text-muted">This report is no longer public.</p>
+					{/if}
 				</article>
 			{/each}
 		</div>

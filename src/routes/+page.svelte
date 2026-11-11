@@ -82,7 +82,7 @@
 		<span class="grid size-11 place-items-center rounded-xl bg-lime/10 text-lg text-lime">▤</span>
 		<div>
 			<div class="text-2xl font-extrabold text-white">{data.totalReports.toLocaleString()}</div>
-			<div class="text-xs text-muted">published community reports</div>
+			<div class="text-xs text-muted">public community reports</div>
 		</div>
 	</div>
 	<div class="surface flex items-center gap-4 rounded-2xl p-5">
@@ -145,8 +145,9 @@
 		<p class="eyebrow !text-lime">Community reports</p>
 		<h2 class="mt-3 text-2xl font-extrabold tracking-tight text-white">Your setup matters.</h2>
 		<p class="mt-3 text-sm leading-7 text-slate-300">
-			Steam users can submit Linux and Steam Deck reports from any game page. Reports are reviewed
-			before they appear publicly, and each report remains tied to its author and device snapshot.
+			Steam users can submit Linux and Steam Deck reports from any game page. Reports appear
+			publicly after submission and may be moderated later. Each report shows its author and chosen
+			device snapshot.
 		</p>
 		<a
 			class="mt-6 inline-flex items-center gap-2 text-sm font-bold text-lime hover:text-mint"

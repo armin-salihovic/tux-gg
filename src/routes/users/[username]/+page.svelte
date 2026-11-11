@@ -42,7 +42,7 @@
 		<div class="mt-7 grid w-full max-w-md grid-cols-2 gap-3">
 			<div class="rounded-xl border border-white/[0.07] bg-black/10 p-4">
 				<div class="text-2xl font-extrabold text-mint">{data.profile.contributionCount}</div>
-				<div class="mt-1 text-xs text-muted">published VapourDB reports</div>
+				<div class="mt-1 text-xs text-muted">public VapourDB reports</div>
 			</div>
 			<div class="rounded-xl border border-white/[0.07] bg-black/10 p-4">
 				<div class="text-sm font-bold text-white">{joined}</div>

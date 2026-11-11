@@ -24,7 +24,7 @@
 		{
 			title: 'Moderation and reporting',
 			paragraphs: [
-				'New VapourDB reports are private while pending review. A moderator may publish, hide, or remove a report. Published reports show the author’s public VapourDB username and the technical details they chose to provide.'
+				'Reports appear publicly as soon as they are submitted, including the author’s public VapourDB username, report text, and chosen device details. Operators can approve, hide, or remove reports afterward. Hidden and removed reports no longer appear publicly.'
 			]
 		}
 	];

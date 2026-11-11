@@ -45,7 +45,7 @@ The primary local workflow is a PostgreSQL Docker container with the application
 
 All application and database commands use the one `DB_*` account in `.env`. See [database setup and recovery](docs/database.md) for privileges and troubleshooting.
 
-The baseline contains the Steam AppID catalog, Better Auth tables, saved devices, and native reports. Compatibility is calculated from published native reports when pages load. Pending, hidden, and removed reports do not affect ratings. A game needs at least three recency-weighted reports and an effective sample size of three before it receives a compatibility tier.
+The baseline contains the Steam AppID catalog, Better Auth tables, saved devices, and native reports. Compatibility is calculated from pending and published native reports when pages load. Reports appear publicly immediately; hidden and removed reports do not affect ratings. Each report uses its submission date with a 365-day half-life. A game needs at least three recency-weighted reports and an effective sample size of three before it receives a compatibility tier.
 
 ## Games catalog backups
 
@@ -70,7 +70,7 @@ Historical `tuxgg-games-YYYYMMDD.csv` and `.dump` files with `tuxgg-games-backup
 
 Steam OpenID is the only sign-in provider. Better Auth stores Steam-linked accounts and manages sessions. The previous local `tuxgg` database is left untouched; only a previously exported games CSV is needed to restore the catalog. The VapourDB cookie prefix is `vapourdb`, so existing browsers may need to sign in again after the release.
 
-Signed-in players can save Linux PCs and Steam Decks under **Settings → Devices**. Reports require a validated device, remain private while pending, and become public only after operator review. See [device handling](docs/devices.md) and [native reports](docs/native-reports.md).
+Signed-in players can save Linux PCs and Steam Decks under **Settings → Devices**. Reports require a validated device and appear publicly after submission, including the report text, public username, and chosen device details. Operators can moderate reports afterward. See [device handling](docs/devices.md) and [native reports](docs/native-reports.md).
 
 In production, use a dedicated non-superuser PostgreSQL account with only the database and schema privileges the application needs. Keep the account password and Better Auth secret out of Git.
 

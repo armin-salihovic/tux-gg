@@ -11,11 +11,10 @@ describe('VapourDB native compatibility scoring', () => {
 	const now = new Date('2026-01-01T00:00:00.000Z');
 	const report = (verdict: 'yes' | 'no', daysAgo = 0) => ({
 		verdict,
-		createdAt: new Date(now.getTime() - daysAgo * 86_400_000),
-		publishedAt: new Date(now.getTime() - daysAgo * 86_400_000)
+		createdAt: new Date(now.getTime() - daysAgo * 86_400_000)
 	});
 
-	it('requires at least three effective, recency-weighted published reports', () => {
+	it('requires at least three effective, recency-weighted community reports', () => {
 		expect(scoreCompatibility([], now).tier).toBe('unknown');
 		expect(tierForEvidence(1, 2.99, 5)).toBe('unknown');
 		expect(tierForEvidence(1, 5, 2.99)).toBe('unknown');
@@ -27,7 +26,7 @@ describe('VapourDB native compatibility scoring', () => {
 		);
 	});
 
-	it('maps published yes/no results to the historical tier thresholds', () => {
+	it('maps yes/no results to the historical tier thresholds', () => {
 		expect(
 			scoreCompatibility([report('yes'), report('yes'), report('yes'), report('yes')], now).tier
 		).toBe('platinum');
