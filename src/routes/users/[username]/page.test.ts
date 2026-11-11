@@ -62,6 +62,26 @@ describe('public profile loader', () => {
 		);
 	});
 
+	it.each([24, 25, 32])('loads a %i-character database-valid username', async (length) => {
+		const username = `a${'b'.repeat(length - 1)}`;
+		const event = makeEvent(`https://vapourdb.test/users/${username}`);
+		(event as unknown as { params: { username: string } }).params.username = username;
+		dependencies.getProfile.mockResolvedValueOnce({
+			name: 'Long Username Player',
+			username,
+			image: null,
+			createdAt: new Date('2024-01-01T00:00:00.000Z'),
+			contributionCount: 1,
+			worksCount: 1,
+			doesNotWorkCount: 0
+		});
+
+		await load(event);
+
+		expect(dependencies.getProfile).toHaveBeenCalledWith(username);
+		expect(dependencies.getPublicUserReports).toHaveBeenCalledWith(username, 1);
+	});
+
 	it('normalizes malformed and oversized page parameters before querying', async () => {
 		await load(makeEvent('https://vapourdb.test/users/player?page=-3'));
 		await load(makeEvent('https://vapourdb.test/users/player?page=10001'));
@@ -70,9 +90,11 @@ describe('public profile loader', () => {
 	});
 
 	it('returns a friendly not-found response and avoids data lookup for invalid usernames', async () => {
-		const event = makeEvent();
-		(event as unknown as { params: { username: string } }).params.username = '../private';
-		await expect(load(event)).rejects.toMatchObject({ status: 404 });
+		for (const username of [`a${'b'.repeat(32)}`, '../private', 'Abc', 'ab', '_abc']) {
+			const event = makeEvent();
+			(event as unknown as { params: { username: string } }).params.username = username;
+			await expect(load(event)).rejects.toMatchObject({ status: 404 });
+		}
 		expect(dependencies.getProfile).not.toHaveBeenCalled();
 	});
 

@@ -7,19 +7,11 @@ import { getDb } from '#lib/server/db/db.js';
 import { authUser } from '#lib/server/db/schema.js';
 import { isOwnerAdmin as hasOwnerAdminAccess } from '#lib/server/admin-access.js';
 import { eq } from 'drizzle-orm';
+import { usernameSchema } from '#lib/usernames.js';
 
 const profileSchema = z.object({
 	name: z.string().trim().min(1).max(60),
-	username: z
-		.string()
-		.trim()
-		.toLowerCase()
-		.min(3)
-		.max(24)
-		.regex(
-			/^[a-z0-9][a-z0-9_-]*$/,
-			'Use lowercase letters, numbers, underscores, and hyphens only.'
-		)
+	username: usernameSchema
 });
 
 export const load: PageServerLoad = async (event) => {

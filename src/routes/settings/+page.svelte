@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ActionData, PageData } from './$types';
+	import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from '#lib/usernames.js';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 </script>
 
@@ -60,13 +61,14 @@
 				id="username"
 				name="username"
 				required
-				minlength="3"
-				maxlength="24"
-				pattern="[a-zA-Z0-9][a-zA-Z0-9_-]*"
+				minlength={USERNAME_MIN_LENGTH}
+				maxlength={USERNAME_MAX_LENGTH}
+				pattern={USERNAME_PATTERN.source}
 				value={data.profile.username}
 				class="mt-2 block w-full rounded-xl border border-line bg-black/20 px-4 py-3 text-sm text-white"
 			/><span class="mt-2 block text-xs font-normal text-muted"
-				>Public profile: /users/{data.profile.username}</span
+				>3–32 characters; start with a lowercase letter or number, then use lowercase letters,
+				numbers, underscores, or hyphens. Public profile: /users/{data.profile.username}</span
 			></label
 		>
 		<button class="rounded-xl bg-mint px-5 py-3 text-sm font-extrabold text-ink hover:bg-lime"

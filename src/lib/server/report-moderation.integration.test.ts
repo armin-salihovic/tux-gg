@@ -130,6 +130,17 @@ describe.skipIf(!enabled)('report moderation against the marked disposable datab
 				moderationState: 'pending',
 				authorUsername: username
 			});
+			expect(
+				await listReportsForModeration({ filter: 'all', search: appId, userId, page: 1 })
+			).toMatchObject({ total: 18 });
+			expect(
+				await listReportsForModeration({
+					filter: 'all',
+					search: `Moderation fixture ${suffix}`,
+					userId,
+					page: 1
+				})
+			).toMatchObject({ total: 18 });
 
 			const scoreBeforeReview = await getGameById(appId);
 			const publicOrderBeforeReview = publicIds;
@@ -154,13 +165,23 @@ describe.skipIf(!enabled)('report moderation against the marked disposable datab
 				...(await getPublicUserReports(username, 2)).reports
 			].map((report) => report.id as string);
 			expect(publicOrderAfterReview).toEqual(publicOrderBeforeReview);
-			expect(await getGameById(appId)).toMatchObject({
-				reportCount: scoreBeforeReview?.reportCount,
-				yesCount: scoreBeforeReview?.yesCount,
-				noCount: scoreBeforeReview?.noCount,
-				weightedScore: scoreBeforeReview?.weightedScore,
-				effectiveSampleSize: scoreBeforeReview?.effectiveSampleSize
-			});
+			const scoreAfterReview = await getGameById(appId);
+			expect(scoreBeforeReview).not.toBeNull();
+			expect(scoreAfterReview).not.toBeNull();
+			expect(scoreAfterReview?.reportCount).toBe(scoreBeforeReview?.reportCount);
+			expect(scoreAfterReview?.yesCount).toBe(scoreBeforeReview?.yesCount);
+			expect(scoreAfterReview?.noCount).toBe(scoreBeforeReview?.noCount);
+			expect(scoreBeforeReview?.weightedScore).toBeDefined();
+			expect(scoreBeforeReview?.weightedScore).not.toBeNull();
+			expect(scoreAfterReview?.weightedScore).toBeDefined();
+			expect(scoreAfterReview?.weightedScore).not.toBeNull();
+			expect(scoreBeforeReview?.effectiveSampleSize).toBeDefined();
+			expect(scoreAfterReview?.effectiveSampleSize).toBeDefined();
+			expect(scoreAfterReview!.weightedScore!).toBeCloseTo(scoreBeforeReview!.weightedScore!, 6);
+			expect(scoreAfterReview!.effectiveSampleSize).toBeCloseTo(
+				scoreBeforeReview!.effectiveSampleSize,
+				6
+			);
 
 			for (const { index, from, action, reportCount, yesCount, noCount } of [
 				{ index: 1, from: 'published', action: 'hide', reportCount: 15, yesCount: 14, noCount: 1 },

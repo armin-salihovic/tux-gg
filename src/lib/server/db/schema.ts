@@ -1,4 +1,5 @@
 import { desc, sql } from 'drizzle-orm';
+import { USERNAME_PATTERN_SOURCE } from '#lib/usernames.js';
 import {
 	boolean,
 	check,
@@ -54,7 +55,12 @@ export const authUser = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow()
 	},
-	(table) => [check('user_username_check', sql`${table.username} ~ '^[a-z0-9][a-z0-9_-]{2,31}$'`)]
+	(table) => [
+		check(
+			'user_username_check',
+			sql`${table.username} ~ ${sql.raw(`'${USERNAME_PATTERN_SOURCE}'`)}`
+		)
+	]
 );
 
 export const authSession = pgTable(

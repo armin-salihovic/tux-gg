@@ -317,12 +317,16 @@ describe.skipIf(!enabled)('native report PostgreSQL integration', () => {
 				[reportIds[3]]
 			);
 			const approvedScore = await getGameById(appId);
+			expect(pendingScore?.weightedScore).toEqual(expect.any(Number));
+			expect(approvedScore?.weightedScore).toEqual(expect.any(Number));
+			expect(pendingScore?.total_weight).toEqual(expect.any(Number));
+			expect(approvedScore?.total_weight).toEqual(expect.any(Number));
 			expect(approvedScore).toMatchObject({
 				reportCount: pendingScore?.reportCount,
 				tier: pendingScore?.tier
 			});
-			expect(approvedScore?.weightedScore).toBeCloseTo(pendingScore?.weightedScore ?? 0, 6);
-			expect(approvedScore?.total_weight).toBeCloseTo(pendingScore?.total_weight ?? 0, 6);
+			expect(approvedScore!.weightedScore!).toBeCloseTo(pendingScore!.weightedScore!, 6);
+			expect(approvedScore!.total_weight!).toBeCloseTo(pendingScore!.total_weight!, 6);
 			expect((await getPublicNativeReports(appId, { page: 1 })).reports.at(-1)?.id).toBe(
 				reportIds[3]
 			);

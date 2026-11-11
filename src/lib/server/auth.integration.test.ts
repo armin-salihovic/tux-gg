@@ -6,6 +6,7 @@ import { canPublishReports, canSubmitReports } from '#lib/server/authz.js';
 import { closeDatabase, getDb, getPool } from '#lib/server/db/db.js';
 import { authAccount, authSession, authUser, authVerification } from '#lib/server/db/schema.js';
 import { getProfile } from '#lib/server/db/queries.js';
+import { isValidUsername } from '#lib/usernames.js';
 import { STEAM_OPENID_NAMESPACE, STEAM_OPENID_URL } from './steam-openid.js';
 
 const enabled = process.env.AUTH_INTEGRATION_TESTS === '1';
@@ -357,7 +358,7 @@ describe.skipIf(!enabled)('Steam OpenID and Better Auth session integration', ()
 			.select({ emailVerified: authUser.emailVerified, username: authUser.username })
 			.from(authUser)
 			.where(eq(authUser.id, firstUserId));
-		expect(user[0]?.username).toMatch(/^[a-z0-9][a-z0-9_-]{2,23}$/);
+		expect(isValidUsername(user[0]?.username ?? '')).toBe(true);
 		expect(user[0]?.emailVerified).toBe(false);
 		const publicProfile = await getProfile(user[0]!.username);
 		expect(publicProfile).not.toHaveProperty('email');

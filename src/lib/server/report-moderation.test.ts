@@ -50,13 +50,32 @@ describe('report moderation queries', () => {
 		const [countSql, countValues] = queryMock.mock.calls[0] as [string, unknown[]];
 		expect(countSql).toContain('report.moderation_state = $1');
 		expect(countSql).toContain('report.author_id = $2');
-		expect(countSql).toContain('author.username ILIKE $3');
+		expect(countSql).toContain("author.username ILIKE $3 ESCAPE E'\\\\'");
 		expect(countSql).not.toContain("player' OR true");
 		expect(countValues).toEqual(['pending', 'stable-user-id', "%player' OR true --%"]);
 		const [reportsSql, reportsValues] = queryMock.mock.calls[1] as [string, unknown[]];
 		expect(reportsSql).toContain('ORDER BY report.created_at ASC, report.id ASC');
 		expect(reportsSql).toContain('LIMIT $4 OFFSET $5');
 		expect(reportsValues).toEqual(['pending', 'stable-user-id', "%player' OR true --%", 25, 25]);
+	});
+
+	it('escapes LIKE metacharacters so moderation search terms stay literal', async () => {
+		queryMock
+			.mockResolvedValueOnce({ rows: [{ total: 0 }] })
+			.mockResolvedValueOnce({ rows: [] })
+			.mockResolvedValueOnce({ rows: [] });
+
+		await listReportsForModeration({
+			filter: 'all',
+			search: 'needle%_\\tail',
+			page: 1
+		});
+
+		const [sql, values] = queryMock.mock.calls[0] as [string, unknown[]];
+		expect(sql).toContain("author.username ILIKE $1 ESCAPE E'\\\\'");
+		expect(sql).toContain("coalesce(game.title, '') ILIKE $1 ESCAPE E'\\\\'");
+		expect(sql).toContain("report.app_id ILIKE $1 ESCAPE E'\\\\'");
+		expect(values).toEqual(['%needle\\%\\_\\\\tail%']);
 	});
 
 	it('orders other moderation views newest first and searches Steam AppIDs through parameters', async () => {
@@ -66,7 +85,7 @@ describe('report moderation queries', () => {
 			.mockResolvedValueOnce({ rows: [] });
 		await listReportsForModeration({ filter: 'all', search: '730', page: 1 });
 		const [sql, values] = queryMock.mock.calls[1] as [string, unknown[]];
-		expect(sql).toContain('report.app_id ILIKE $1');
+		expect(sql).toContain("report.app_id ILIKE $1 ESCAPE E'\\\\'");
 		expect(sql).toContain('ORDER BY report.created_at DESC, report.id DESC');
 		expect(values).toEqual(['%730%', 25, 0]);
 	});

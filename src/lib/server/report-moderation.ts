@@ -9,6 +9,11 @@ export type ReportModerationAction = 'review' | 'hide' | 'remove' | 'restore';
 const MAX_PAGE = 2_147_483_647;
 const stateSet = new Set<string>(REPORT_MODERATION_STATES);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LIKE_ESCAPE_CLAUSE = "ESCAPE E'\\\\'";
+
+function escapeLikePattern(value: string): string {
+	return value.replace(/[\\%_]/g, '\\$&');
+}
 
 export function parseReportModerationPage(value: string | null): number {
 	if (!value || !/^[1-9]\d{0,9}$/.test(value)) return 1;
@@ -43,10 +48,10 @@ export async function listReportsForModeration(query: ReportModerationQuery) {
 	}
 	const search = query.search.trim().slice(0, 100);
 	if (search) {
-		values.push(`%${search}%`);
+		values.push(`%${escapeLikePattern(search)}%`);
 		const searchParam = `$${values.length}`;
 		conditions.push(
-			`(author.username ILIKE ${searchParam} OR coalesce(game.title, '') ILIKE ${searchParam} OR report.app_id ILIKE ${searchParam})`
+			`(author.username ILIKE ${searchParam} ${LIKE_ESCAPE_CLAUSE} OR coalesce(game.title, '') ILIKE ${searchParam} ${LIKE_ESCAPE_CLAUSE} OR report.app_id ILIKE ${searchParam} ${LIKE_ESCAPE_CLAUSE})`
 		);
 	}
 	const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

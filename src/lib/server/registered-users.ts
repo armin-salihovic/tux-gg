@@ -1,9 +1,8 @@
 import { getPool } from '#lib/server/db/db.js';
+import { isValidUsername } from '#lib/usernames.js';
 
 export const REGISTERED_USERS_PAGE_SIZE = 25;
 const MAX_PAGE_NUMBER = 2_147_483_647;
-const PUBLIC_USERNAME = /^[a-z0-9][a-z0-9_-]{2,31}$/;
-
 const registrationDateFormatter = new Intl.DateTimeFormat('en-GB', {
 	year: 'numeric',
 	month: 'short',
@@ -42,7 +41,7 @@ export function getRegisteredUsersPageCount(totalUsers: number): number {
 }
 
 export function getPublicUsernamePath(username: string): string | null {
-	return PUBLIC_USERNAME.test(username) ? `/users/${username}` : null;
+	return isValidUsername(username) ? `/users/${username}` : null;
 }
 
 export async function listRegisteredUsers(requestedPage: number): Promise<RegisteredUsersPage> {

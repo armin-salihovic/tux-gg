@@ -93,10 +93,16 @@ describe('registered users pagination', () => {
 		expect(JSON.stringify(result)).not.toMatch(/email|token|steam|ipAddress|content/i);
 	});
 
-	it('links only usernames accepted by the public profile route', () => {
+	it('links database-valid usernames including 25–32 character profiles', () => {
 		expect(getPublicUsernamePath('valid_user-2')).toBe('/users/valid_user-2');
+		for (const length of [24, 25, 32]) {
+			const username = `a${'b'.repeat(length - 1)}`;
+			expect(getPublicUsernamePath(username)).toBe(`/users/${username}`);
+		}
+		expect(getPublicUsernamePath(`a${'b'.repeat(32)}`)).toBeNull();
 		expect(getPublicUsernamePath('UPPER')).toBeNull();
 		expect(getPublicUsernamePath('ab')).toBeNull();
+		expect(getPublicUsernamePath('_abc')).toBeNull();
 		expect(getPublicUsernamePath('../private')).toBeNull();
 	});
 });
